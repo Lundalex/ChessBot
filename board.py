@@ -13,6 +13,39 @@ class Board:
             # abc -> Piece key
             # d -> Piece color
             self.pcs.append(0b0000)
+        self.rookMoveOffsets = {
+            "north": -8,
+            "west": -1,
+            "east": 1,
+            "south": 8
+        }
+        self.bishopMoveOffsets = {
+            "northWest": -9,
+            "northEast": -7,
+            "southwest": 7,
+            "southEast": 9
+        }
+        self.queenMoveOffsets = {
+            "north": -8,
+            "west": -1,
+            "east": 1,
+            "south": 8,
+            "northWest": -9,
+            "northEast": -7,
+            "southwest": 7,
+            "southEast": 9
+        }
+        self.knightMoveOffsets = {
+            "northWestLow": -10,
+            "northWestHigh": -17,
+            "northEastLow": -6,
+            "northEastHigh": -15,
+            "southWestLow": 15,
+            "southWestHigh": 6,
+            "southEastLow": 17,
+            "southEastHigh": 10
+        }
+        self.kingMoveOffsets = self.queenMoveOffsets
 
     # Set variables to given data
     def SetBoard(self, startBoard, turnToMove, castleAvailability, enPessantTargetSquare, halfmoves, fullmoves):
@@ -88,10 +121,90 @@ class Board:
     def GetEvaluation(self):
         return "yes"
 
-    # Returns all legal moves
-    def GetLegalMoves(self):
-        return "yes"
+    # Returns all legal moves for current piece positions
+    def GetLegalMoves(self, colorKey):
+        legalMoves = set()
+        for curSquare, pieceKey in enumerate(self.pcs):
+            pieceChar = GetPieceChar(pieceKey)
+            pieceColor = 0b1000 if pieceChar.isupper() else 0b0000
+            if (pieceColor != colorKey):
+                continue
+            pieceCharLower = pieceChar.lower()
 
+            if pieceCharLower == "p":
+                legalMoves.update(self.__GetLegalMovesPawn(curSquare, colorKey))
+            elif pieceCharLower == "n":
+                legalMoves.update(self.__GetLegalMovesKnight(curSquare, colorKey))
+            elif pieceCharLower == "b":
+                legalMoves.update(self.__GetLegalMovesBishop(curSquare, colorKey))
+            elif pieceCharLower == "r":
+                legalMoves.update(self.__GetLegalMovesRook(curSquare, colorKey))
+            elif pieceCharLower == "q":
+                legalMoves.update(self.__GetLegalMovesQueen(curSquare, colorKey))
+            elif pieceCharLower == "k":
+                legalMoves.update(self.__GetLegalMovesKing(curSquare, colorKey))
+
+        return legalMoves
+
+    def __GetLegalMovesQueen(self, curSquare, color):
+        queenLegalMoves = set()
+        for queenMoveOffset in self.queenMoveOffsets.values():
+            queenLegalMoves.update(self.__GetLegalMovesInDirection(curSquare, color, queenMoveOffset))
+        return queenLegalMoves
+
+    def __GetLegalMovesRook(self, curSquare, color):
+        rookLegalMoves = set()
+        for rookMoveOffset in self.rookMoveOffsets.values():
+            rookLegalMoves.update(self.__GetLegalMovesInDirection(curSquare, color, rookMoveOffset))
+        return rookLegalMoves
+
+    def __GetLegalMovesBishop(self, curSquare, color):
+        bishopLegalMoves = set()
+        for bishopMoveOffset in self.bishopMoveOffsets.values():
+            bishopLegalMoves.update(self.__GetLegalMovesInDirection(curSquare, color, bishopMoveOffset))
+        return bishopLegalMoves
+    
+    def __GetLegalMovesInDirection(self, curSquare, color, moveOffset):
+        offset = 0
+        dirLegalMoves = set()
+        while (0 <= curSquare + offset < len(self.pcs) and 
+            self.pcs[curSquare + offset] == 0b0000 and 
+            self.__CheckBounds(curSquare + offset - moveOffset, curSquare + offset)):
+            dirLegalMoves.add((curSquare, curSquare+offset))
+            offset += moveOffset
+        if (0 <= curSquare + offset < len(self.pcs) and 
+            self.__CheckBounds(curSquare + offset - moveOffset, curSquare + offset)):
+            dirLegalMoves.add((curSquare, curSquare+offset))
+        return dirLegalMoves
+
+    def __GetLegalMovesKing(self, curSquare, color):
+        kingLegalMoves = set()
+        for kingMoveOffset in self.kingMoveOffsets.values():
+            if (self.__CheckBoardPcsBounds(curSquare + kingMoveOffset)):
+                if (self.pcs[curSquare + kingMoveOffset] & color != 0):
+                    kingLegalMoves.add((curSquare, curSquare + kingMoveOffset))
+        return kingLegalMoves
+
+    def __GetLegalMovesKnight(self, curSquare, color):
+        knightLegalMoves = set()
+        for knightMoveOffset in self.knightMoveOffsets.values():
+            if (self.__CheckBoardPcsBounds(curSquare + knightMoveOffset)):
+                if (self.pcs[curSquare + knightMoveOffset] & color != 0):
+                    knightLegalMoves.add((curSquare, curSquare + knightMoveOffset))
+        return knightLegalMoves
+
+    def __GetLegalMovesPawn(self, curSquare, color):
+        return set()
+
+    def __CheckBounds(self, lastSquare, nextSquare):
+        if (self.__CheckBoardPcsBounds(nextSquare) and -1 <= (lastSquare % 8 - nextSquare % 8) <= 1):
+            return True
+        return False
+    
+    def __CheckBoardPcsBounds(self, pieceIndex):
+        if (0 <= pieceIndex <= 63):
+            return True
+        return False
 
 def GetPieceKey(pieceChar):
 
@@ -137,12 +250,11 @@ def GetPieceChar(pieceKey):
 
     return pieceType.upper() if upperCase == True else pieceType
 
-
-
 board = Board()
 board.SetStart()
 board.UpdateBoardStr()
 print(board.boardStr)
+print(board.GetLegalMoves(0b1000))
 # pieceKey = board.pcs[23]
 # print(pieceKey)
 # print(GetPieceChar(pieceKey))
