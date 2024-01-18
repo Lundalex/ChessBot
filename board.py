@@ -1,3 +1,4 @@
+import math
 import pygame
 import os
 
@@ -16,6 +17,18 @@ class Board:
             # abc -> Piece key
             # d -> Piece color
             self.pcs.append(0b0000)
+        self.pawnMoveOffsetsWhite = {
+            "forwardOneWhite": 8,
+            # "forwardTwoWhite": 16,
+            "captureLeftWhite": 7,
+            "captureRightWhite": 9
+        }
+        self.pawnMoveOffsetsBlack = {
+            "forwardOneBlack": -8,
+            # "forwardTwoBlack": -16,
+            "captureLeftBlack": -7,
+            "captureRightBlack": -9,
+        }
         self.rookMoveOffsets = {
             "north": -8,
             "west": -1,
@@ -81,6 +94,13 @@ class Board:
         ]
 
         self.SetBoard(startConfig, "w", "KQkq", 0, 0, 0)
+    
+    def MakeMove(self, fromSquare, toSquare):
+        if (fromSquare != 64 and toSquare != 64):
+            self.pcs[toSquare] = self.pcs[fromSquare]
+            self.pcs[fromSquare] = 0
+
+        return board
 
     # Updates the self.boardStr variable
     def UpdateBoardStr(self):
@@ -136,7 +156,7 @@ class Board:
 
             if pieceCharLower == "p":
                 legalMoves.update(self.__GetLegalMovesPawn(curSquare, pieceColor))
-            elif pieceCharLower == "n":
+            if pieceCharLower == "n":
                 legalMoves.update(self.__GetLegalMovesKnight(curSquare, pieceColor))
             elif pieceCharLower == "b":
                 legalMoves.update(self.__GetLegalMovesBishop(curSquare, pieceColor))
@@ -146,6 +166,28 @@ class Board:
                 legalMoves.update(self.__GetLegalMovesQueen(curSquare, pieceColor))
             elif pieceCharLower == "k":
                 legalMoves.update(self.__GetLegalMovesKing(curSquare, pieceColor))
+
+        return legalMoves
+
+    def GetLegalMovesPiece(self, curSquare, pieceKey):
+        legalMoves = set()
+
+        pieceChar = GetPieceChar(pieceKey)
+        pieceColor = 0b1000 if pieceChar.isupper() else 0b0000
+        pieceCharLower = pieceChar.lower()
+
+        if pieceCharLower == "p":
+            legalMoves.update(self.__GetLegalMovesPawn(curSquare, pieceColor))
+        if pieceCharLower == "n":
+            legalMoves.update(self.__GetLegalMovesKnight(curSquare, pieceColor))
+        elif pieceCharLower == "b":
+            legalMoves.update(self.__GetLegalMovesBishop(curSquare, pieceColor))
+        elif pieceCharLower == "r":
+            legalMoves.update(self.__GetLegalMovesRook(curSquare, pieceColor))
+        elif pieceCharLower == "q":
+            legalMoves.update(self.__GetLegalMovesQueen(curSquare, pieceColor))
+        elif pieceCharLower == "k":
+            legalMoves.update(self.__GetLegalMovesKing(curSquare, pieceColor))
 
         return legalMoves
 
@@ -168,16 +210,16 @@ class Board:
         return bishopLegalMoves
     
     def __GetLegalMovesInDirection(self, curSquare, color, moveOffset):
-        offset = 0
+        offset = moveOffset
         dirLegalMoves = set()
         while (self.__CheckBoardPcsBounds(curSquare + offset) and 
-            self.pcs[curSquare + offset] == 0b0000 and 
+            self.pcs[curSquare + offset] == 0 and 
             self.__CheckBounds(curSquare + offset - moveOffset, curSquare + offset)):
             
             dirLegalMoves.add((curSquare, curSquare + offset))
             offset += moveOffset
         if (self.__CheckBoardPcsBounds(curSquare + offset) and 
-            self.pcs[curSquare + offset] & color == 0 and
+            self.pcs[curSquare + offset] & 0b1000 != color and
             self.__CheckBounds(curSquare + offset - moveOffset, curSquare + offset)):
             dirLegalMoves.add((curSquare, curSquare + offset))
         return dirLegalMoves
@@ -186,7 +228,8 @@ class Board:
         kingLegalMoves = set()
         for kingMoveOffset in self.kingMoveOffsets.values():
             if (self.__CheckBoardPcsBounds(curSquare + kingMoveOffset)):
-                if (self.pcs[curSquare + kingMoveOffset] & color != 0):
+                if (self.pcs[curSquare + kingMoveOffset] & 0b1000 != color or
+                    self.pcs[curSquare + kingMoveOffset] == 0):
                     kingLegalMoves.add((curSquare, curSquare + kingMoveOffset))
         return kingLegalMoves
 
@@ -194,12 +237,46 @@ class Board:
         knightLegalMoves = set()
         for knightMoveOffset in self.knightMoveOffsets.values():
             if (self.__CheckBoardPcsBounds(curSquare + knightMoveOffset)):
-                if (self.pcs[curSquare + knightMoveOffset] & color != 0):
+                if (self.pcs[curSquare + knightMoveOffset] & 0b1000 != color or
+                    self.pcs[curSquare + knightMoveOffset] == 0):
                     knightLegalMoves.add((curSquare, curSquare + knightMoveOffset))
         return knightLegalMoves
 
     def __GetLegalMovesPawn(self, curSquare, color):
-        return set()
+        pawnLegalMoves = set()
+        if (color == 0b0000):
+            for pawnMoveOffset in self.pawnMoveOffsetsWhite.values():
+                if (self.__CheckBoardPcsBounds(curSquare + pawnMoveOffset)):
+                    if (pawnMoveOffset == 8):
+                        if (self.pcs[curSquare + pawnMoveOffset] == 0):
+                            pawnLegalMoves.add((curSquare, curSquare + pawnMoveOffset))
+                    else:
+                        if (self.pcs[curSquare + pawnMoveOffset] & 0b1000 != color  and
+                            self.pcs[curSquare + pawnMoveOffset] != 0):
+                            pawnLegalMoves.add((curSquare, curSquare + pawnMoveOffset))
+            return pawnLegalMoves
+        else: # color == 0b0000
+            for pawnMoveOffset in self.pawnMoveOffsetsBlack.values():
+                if (self.__CheckBoardPcsBounds(curSquare + pawnMoveOffset)):
+                    if (pawnMoveOffset == -8):
+                        if (self.pcs[curSquare + pawnMoveOffset] == 0):
+                            pawnLegalMoves.add((curSquare, curSquare + pawnMoveOffset))
+                    else:
+                        if (self.pcs[curSquare + pawnMoveOffset] & 0b1000 != color and
+                            self.pcs[curSquare + pawnMoveOffset] != 0):
+                            pawnLegalMoves.add((curSquare, curSquare + pawnMoveOffset))
+            return pawnLegalMoves
+
+        # self.pawnOffsets = {
+        #     "forwardOneBlack": -8,
+        #     "forwardTwoBlack": -16,
+        #     "forwardOneWhite": 8,
+        #     "forwardTwoWhite": 16,
+        #     "captureLeftBlack": -7,
+        #     "captureRightBlack": -9,
+        #     "captureLeftWhite": 7,
+        #     "captureRightWhite": 9
+        # }
 
     def __CheckBounds(self, lastSquare, nextSquare):
         if (self.__CheckBoardPcsBounds(nextSquare) and -1 <= (lastSquare % 8 - nextSquare % 8) <= 1):
@@ -213,44 +290,72 @@ class Board:
 
 class Interface:
 
-    def __init__(self, boardList):
+    def __init__(self, boardList, legalMoves):
         self.boardPositions = boardList
         self.boardSize = 8
         self.squareSize = 80
         self.width = self.height = self.squareSize * self.boardSize
+        self.fromSquare = 64
+        self.toSquare = 64
 
         pygame.init()
         self.screen = pygame.display.set_mode((self.width, self.height))
         pygame.display.set_caption("Chess Bot")
         self.__LoadPieces()
-        self.DrawBoard()
+        self.DrawBoard(legalMoves)
 
     def __LoadPieces(self):
         self.pieces = {}
         piece_names = [
-            'k', 'q', 'r', 'b', 'k', 'p',
-            'wK', 'wQ', 'wR', 'wB', 'wK', 'wP'
+            'n', 'q', 'r', 'b', 'k', 'p',
+            'wN', 'wQ', 'wR', 'wB', 'wK', 'wP',
+            'mn', 'mq', 'mr', 'mb', 'mk', 'mp',
+            'mwN', 'mwQ', 'mwR', 'mwB', 'mwK', 'mwP'
         ]
         for piece in piece_names:
             self.pieces[piece] = pygame.image.load(os.path.join('ChessPieces', piece + '.png'))
             self.pieces[piece] = pygame.transform.scale(self.pieces[piece], (self.squareSize, self.squareSize))
 
-    def DrawBoard(self):
-        colors = [pygame.Color("white"), pygame.Color("gray")]
+    def DrawBoard(self, legalMoves):
+        colors = [pygame.Color("white"), pygame.Color("gray"), pygame.Color("orange")]
         for row in range(self.boardSize):
             for col in range(self.boardSize):
-                squareColor = colors[((row + col) % 2)]
                 boardIndex = row * 8 + col
+                if (valueYInTuple(legalMoves, boardIndex)):
+                    squareColor = colors[2]
+                else:
+                    squareColor = colors[((row + col) % 2)] 
                 pieceChar = GetPieceChar(self.boardPositions[boardIndex])
-
                 self.__DrawSquare(col, row, squareColor)
-
                 self.__DrawPiece(row, col, pieceChar)
+        self.FlipScreen()
     
     def __DrawSquare(self, col, row, squareColor):
         pygame.draw.rect(self.screen, squareColor, 
                         pygame.Rect(col*self.squareSize, row*self.squareSize, 
                         self.squareSize, self.squareSize))
+        
+    def RightClickAction(self, mousePosXY, colorKey, board):
+        xSquare = math.floor(mousePosXY[0] / self.squareSize)
+        ySquare = math.floor(mousePosXY[1] / self.squareSize)
+        squareKey = ySquare * 8 + xSquare
+        move = (64, 64)
+        moveIsLegal = True
+        if (self.fromSquare == 64):
+            self.fromSquare = squareKey
+            move = self.fromSquare, 64
+        else:
+            if ((fromSquare, squareKey) in board.GetLegalMoves(colorKey)):
+                self.toSquare = squareKey
+                move = self.fromSquare, self.toSquare
+                self.fromSquare = 64
+                self.toSquare = 64
+            else:
+                moveIsLegal = False
+                self.fromSquare = 64
+                self.toSquare = 64
+
+        return move[0], move[1], moveIsLegal
 
     def __DrawPiece(self, row, col, pieceChar):
         if pieceChar.isupper():
@@ -292,7 +397,7 @@ def GetPieceChar(pieceKey):
     if pieceTypeBin == 0b0001:
         pieceType = "p"
     elif pieceTypeBin == 0b0010:
-        pieceType = "k"
+        pieceType = "n"
     elif pieceTypeBin == 0b0011:
         pieceType = "b"
     elif pieceTypeBin == 0b0100:
@@ -306,19 +411,41 @@ def GetPieceChar(pieceKey):
 
     return pieceType.upper() if upperCase == True else pieceType
 
+def valueYInTuple(tupleSet, number):
+    for a, b in tupleSet:
+        if b == number:
+            return True
+    return False
+
 board = Board()
 board.SetStart()
 board.UpdateBoardStr()
 print(board.boardStr)
 print(board.GetLegalMoves(0b1000))
 
-chess_interface = Interface(board.pcs)
+colorTurn = 0b1000
+interface = Interface(board.pcs, board.GetLegalMoves(colorTurn))
 running = True
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
-
-    chess_interface.FlipScreen()
-
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button == 1:
+                mousePos = pygame.mouse.get_pos()
+                colorTurnCopy = 0b0000
+                if (colorTurn == 0b0000):
+                    colorTurnCopy = 0b1000
+                fromSquare, toSquare, moveIsLegal = interface.RightClickAction(mousePos, colorTurn, board)
+                if (not moveIsLegal):
+                    continue
+                if (toSquare != 64):
+                    if (colorTurn == 0b0000):
+                        colorTurn = 0b1000
+                    else:
+                        colorTurn = 0b0000
+                    board.MakeMove(fromSquare, toSquare)
+                    interface.DrawBoard(board.GetLegalMoves(colorTurn))
+                else:
+                    interface.DrawBoard(board.GetLegalMovesPiece(fromSquare, board.pcs[fromSquare]))
 pygame.quit()
