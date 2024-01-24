@@ -2,6 +2,8 @@ import math
 import pygame
 import os
 
+from chess_utils import *
+
 class Board:
 
     # initializes variables
@@ -74,7 +76,7 @@ class Board:
 
     # Set variables to starting data
     def SetStart(self):
-        # white      black
+        #      white   black
         P, p = 0b0001, 0b1001
         N, n = 0b0010, 0b1010
         B, b = 0b0011, 0b1011
@@ -96,8 +98,10 @@ class Board:
         self.SetBoard(startConfig, "w", "KQkq", 0, 0, 0)
     
     def MakeMove(self, fromSquare, toSquare):
+        # 64: No square selected
         if (fromSquare != 64 and toSquare != 64):
             self.pcs[toSquare] = self.pcs[fromSquare]
+            # 0: No piece square
             self.pcs[fromSquare] = 0
 
         return board
@@ -110,26 +114,31 @@ class Board:
         
         boardStr = ""
         emptyIndeces = 0
-        for i in range(64):
-            pieceKey = self.pcs[i]
+        for i, pieceKey in enumerate(self.pcs):
 
+            # New row
             if (i) % 8 == 0 and i != 0:
                 if emptyIndeces != 0:
                     boardStr += str(emptyIndeces)
                     emptyIndeces = 0
                 boardStr += "/"
 
+            # Empty square
             if pieceKey == 0b0000:
                 emptyIndeces += 1
                 continue
 
+            # Piece on square
             pieceChar = GetPieceChar(pieceKey)
             if emptyIndeces != 0:
                 boardStr += str(emptyIndeces)
                 emptyIndeces = 0
             boardStr += pieceChar
         
+        # Add per turn data
         enPessantTargetSquareStr = str(self.enPessantTargetSquare) if self.enPessantTargetSquare != 0 else "-"
+
+        # Add per game data
         boardStr += " " + self.turnToMove + " " + self.castleAvailability + " " + enPessantTargetSquareStr + " " + str(self.halfmoves) + " " + str(self.fullmoves)
          
         self.boardStr = boardStr
@@ -140,20 +149,18 @@ class Board:
         self.SetBoardStr()
         return self.boardStr
 
-    # Returns the evaluated board evaluation
-    def GetEvaluation(self):
-        return "yes"
-
     # Returns all legal moves for current piece positions
     def GetLegalMoves(self, colorKey):
         legalMoves = set()
         for curSquare, pieceKey in enumerate(self.pcs):
             pieceChar = GetPieceChar(pieceKey)
             pieceColor = 0b1000 if pieceChar.isupper() else 0b0000
+
+            # Only get legal moves for the chosen color
             if (pieceColor != colorKey):
                 continue
-            pieceCharLower = pieceChar.lower()
 
+            pieceCharLower = pieceChar.lower()
             if pieceCharLower == "p":
                 legalMoves.update(self.__GetLegalMovesPawn(curSquare, pieceColor))
             if pieceCharLower == "n":
@@ -169,6 +176,7 @@ class Board:
 
         return legalMoves
 
+    # Returns all legal moves for a specific piece
     def GetLegalMovesPiece(self, curSquare, pieceKey):
         legalMoves = set()
 
@@ -190,6 +198,8 @@ class Board:
             legalMoves.update(self.__GetLegalMovesKing(curSquare, pieceColor))
 
         return legalMoves
+
+    # -- Helper functions --
 
     def __GetLegalMovesQueen(self, curSquare, color):
         queenLegalMoves = set()
@@ -288,10 +298,16 @@ class Board:
             return True
         return False
 
+    # Returns the approximated board evaluation
+    def GetEvaluation(self):
+        return "yes"
+    
 class Interface:
 
-    def __init__(self, boardList, legalMoves):
-        self.boardPositions = boardList
+    # Initializes Interface variables
+    # Requires board positions and legal moves
+    def __init__(self, board, colorTurn=0b1000):
+        self.boardPositions = board.pcs
         self.boardSize = 8
         self.squareSize = 80
         self.width = self.height = self.squareSize * self.boardSize
@@ -302,20 +318,19 @@ class Interface:
         self.screen = pygame.display.set_mode((self.width, self.height))
         pygame.display.set_caption("Chess Bot")
         self.__LoadPieces()
-        self.DrawBoard(legalMoves)
+        self.DrawBoard(board.GetLegalMoves(colorTurn))
+    
+    # Set self board position data
+    def SetBoardPositions(self, boardList):
+        self.boardPositions = boardList
 
-    def __LoadPieces(self):
-        self.pieces = {}
-        piece_names = [
-            'n', 'q', 'r', 'b', 'k', 'p',
-            'wN', 'wQ', 'wR', 'wB', 'wK', 'wP',
-            'mn', 'mq', 'mr', 'mb', 'mk', 'mp',
-            'mwN', 'mwQ', 'mwR', 'mwB', 'mwK', 'mwP'
-        ]
-        for piece in piece_names:
-            self.pieces[piece] = pygame.image.load(os.path.join('ChessPieces', piece + '.png'))
-            self.pieces[piece] = pygame.transform.scale(self.pieces[piece], (self.squareSize, self.squareSize))
+    # Note: "RightClickAction()" is more efficient and should be used for user-made moves
+    def SetBoardPositionsAndDrawBoard(self, board, colorTurn=0b1000):
+        self.SetBoardPositions(board.pcs)
+        self.DrawBoard(board.GetLegalMoves(colorTurn))
 
+    # Draws the whole board using self board data
+    # Requires legal moves
     def DrawBoard(self, legalMoves):
         colors = [pygame.Color("white"), pygame.Color("gray"), pygame.Color("orange")]
         for row in range(self.boardSize):
@@ -330,20 +345,23 @@ class Interface:
                 self.__DrawPiece(row, col, pieceChar)
         self.FlipScreen()
     
-    def __DrawSquare(self, col, row, squareColor):
-        pygame.draw.rect(self.screen, squareColor, 
-                        pygame.Rect(col*self.squareSize, row*self.squareSize, 
-                        self.squareSize, self.squareSize))
-        
+    # Returns move data
     def RightClickAction(self, mousePosXY, colorKey, board):
         xSquare = math.floor(mousePosXY[0] / self.squareSize)
         ySquare = math.floor(mousePosXY[1] / self.squareSize)
+
         squareKey = ySquare * 8 + xSquare
+
+        # 64: No square
         move = (64, 64)
         moveIsLegal = True
+
+        # Set fromSquare variable
         if (self.fromSquare == 64):
             self.fromSquare = squareKey
             move = self.fromSquare, 64
+
+        # Set toSquare variable (if the move is legal)
         else:
             if ((fromSquare, squareKey) in board.GetLegalMoves(colorKey)):
                 self.toSquare = squareKey
@@ -356,76 +374,50 @@ class Interface:
                 self.toSquare = 64
 
         return move[0], move[1], moveIsLegal
+    
+    def FlipScreen(self):
+        pygame.display.flip()
 
+    # -- Helper functions --
+
+    def __LoadPieces(self):
+        self.pieces = {}
+        piece_names = [
+            'n', 'q', 'r', 'b', 'k', 'p',
+            'wN', 'wQ', 'wR', 'wB', 'wK', 'wP',
+            'mn', 'mq', 'mr', 'mb', 'mk', 'mp',
+            'mwN', 'mwQ', 'mwR', 'mwB', 'mwK', 'mwP'
+        ]
+        for piece in piece_names:
+            self.pieces[piece] = pygame.image.load(os.path.join('ChessPieces', piece + '.png'))
+            self.pieces[piece] = pygame.transform.scale(self.pieces[piece], (self.squareSize, self.squareSize))
+
+    def __DrawSquare(self, col, row, squareColor):
+        pygame.draw.rect(self.screen, squareColor, 
+                        pygame.Rect(col*self.squareSize, row*self.squareSize, 
+                        self.squareSize, self.squareSize))
+        
     def __DrawPiece(self, row, col, pieceChar):
         if pieceChar.isupper():
             pieceChar = "w" + pieceChar
         if pieceChar in self.pieces:
             piece_image = self.pieces[pieceChar]
             self.screen.blit(piece_image, (col*self.squareSize, row*self.squareSize))
-    
-    def FlipScreen(self):
-        pygame.display.flip()
 
-def GetPieceKey(pieceChar):
-
-    pieceColor = 0b1000 if pieceChar.isupper() else 0b0000
-    pieceChar = pieceChar.lower()
-
-    pieceType = 0b0
-    if pieceChar == "p":
-        pieceType = 0b0001
-    elif pieceChar == "n":
-        pieceType = 0b0010
-    elif pieceChar == "b":
-        pieceType = 0b0011
-    elif pieceChar == "r":
-        pieceType = 0b0100
-    elif pieceChar == "q":
-        pieceType = 0b0101
-    elif pieceChar == "k":
-        pieceType = 0b0110
-    
-    return pieceType + pieceColor
-
-def GetPieceChar(pieceKey):
-
-    upperCase = True if pieceKey & 0b1000 else False
-
-    pieceType = ""
-    pieceTypeBin = pieceKey & 0b0111
-    if pieceTypeBin == 0b0001:
-        pieceType = "p"
-    elif pieceTypeBin == 0b0010:
-        pieceType = "n"
-    elif pieceTypeBin == 0b0011:
-        pieceType = "b"
-    elif pieceTypeBin == 0b0100:
-        pieceType = "r"
-    elif pieceTypeBin == 0b0101:
-        pieceType = "q"
-    elif pieceTypeBin == 0b0110:
-        pieceType = "k"
-    else:
-        return "empty"
-
-    return pieceType.upper() if upperCase == True else pieceType
-
-def valueYInTuple(tupleSet, number):
-    for a, b in tupleSet:
-        if b == number:
-            return True
-    return False
-
+# Board Setup
 board = Board()
 board.SetStart()
 board.UpdateBoardStr()
+
+# Example use
 print(board.boardStr)
 print(board.GetLegalMoves(0b1000))
 
+# Interface setup
 colorTurn = 0b1000
-interface = Interface(board.pcs, board.GetLegalMoves(colorTurn))
+interface = Interface(board)
 running = True
+# This is very much spaghetti code, but it will have to be rewritten for implementing the bot
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
