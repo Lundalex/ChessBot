@@ -30,16 +30,6 @@ class AbdadaBoard(chess.Board):
     def print_board(self):
         print(self)
 
-    def san2uci(self, san):
-        move = chess.Move.from_uci(
-            list(self.legal_moves)[0].uci()
-        )  # Assuming a legal move to initialize the move object
-        try:
-            move = chess.Move.from_uci(self.parse_san(san).uci())
-        except ValueError:
-            print("Invalid move in SAN format.")
-        return move.uci()
-
 
 def nojus(position):
     return (

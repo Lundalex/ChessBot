@@ -5,6 +5,7 @@
 #include <tuple>
 #include <thread>
 #include "ChessBoard.cpp"
+#include <cmath>
 
 using namespace std;
 
@@ -21,8 +22,9 @@ class abdada
 public:
     int n_threads;
     int depth;
-    float (*heuristics)(string); // pointer to heurisitcs function
-    bool debug = false;          // wheter to turn on or off debug mode , default is off
+    float (*heuristics)(ChessBoard); // pointer to heurisitcs function
+    bool debug;                      // wheter to turn on or off debug mode , default is off
+    abdada(int n_threads, int depth, float (*heuristics)(ChessBoard), bool debug = false) : n_threads(n_threads), depth(depth), heuristics(heuristics), debug(debug){};
 
 private:
     mutex lock;                                     // thread lock
@@ -114,65 +116,63 @@ private:
         if (!(position.outcome() == 3)) // return the terminal value , a very big terminal value, just no infinity, depening on winning player
             return {position.outcome() * 9999999999999999, false};
         if (depth == 0)
-            return {(*heuristics)(position.stringify()), false};
+            return {(*heuristics)(position), false};
         float score = -INFINITY; // just get the worst possible baseline so all other moves are better
         bool on_eval;
-        const auto [alpha, beta, score, on_eval] = HashMapRetrieve(position.stringify(), alpha, beta, depth, exclusive); // basically just a stright copy from the wiki, don't ask me why or how, it is what it is
-        chess_move *moves;
-        int moves_len;
-        const auto [moves, moves_len] = position.gen_moves();
+        tie(alpha, beta, score, on_eval) = HashMapRetrieve(position.stringify(), alpha, beta, depth, exclusive); // basically just a stright copy from the wiki, don't ask me why or how, it is what it is
+        vector<chess_move> moves;
+        moves = position.gen_moves();
 
-        if (on_eval)
+        if (on_eval) // return if anothre node is evalutaing the current pos and the node is in exclusice mode
             return {score, true};
-        if (!(alpha < beta))
+        if (!(alpha < beta)) // if the node is pruned
             return {score, false};
         bool alldone = false;
         bool sub_exclusive;
-        pair<float, bool> value;
-        for (int i = 0; i < 2; i++)
+        pair<float, bool> value;    // the evaluted nodes value
+        for (int i = 0; i < 2; i++) // iterating twice over the same list so that any node already under eval gets evald only after nodes not on eval are searched
         {
             if ((alpha < beta) && !alldone)
             {
                 alldone = true;
-                for (int j = 0; j < moves_len; j++)
+                for (int j = 0; j < moves.size(); j++) // iterating over all moves
                 {
-                    chess_move Cmove = moves[j];
+                    chess_move Cmove = moves[j]; // current move
                     if (alpha < beta)
                     {
-                        sub_exclusive = ((i == 0) && (j != 0));
-                        position.move(Cmove);
-                        value = InnerAbdada(position, alpha, beta, depth, sub_exclusive);
-                        position.unmove();
-                        if (std::get<1>(value))
+                        sub_exclusive = ((i == 0) && (j != 0));                           // is in exclusive mode if ,and only if, both the searched node ISN'T the first node being evaluted (this is to get a good alpha/beta) and is on the first pass through
+                        position.move(Cmove);                                             // do the move
+                        value = InnerAbdada(position, alpha, beta, depth, sub_exclusive); // searched the resulting move
+                        position.unmove();                                                // undo the move
+                        if (std::get<1>(value))                                           // check id the node is under eval
                             alldone = false;
                         else if (std::get<0>(value) > score)
                         {
-                            score = std::get<0>(value);
+                            score = std::get<0>(value); // save the score if it's better than a prevoius score
                             if (!(score < beta))
                             {
                                 HashMapStore(position.stringify(), alpha, beta, score, depth);
-                                return {-score, false};
+                                return {-score, false}; // if the current node is pruned , save the score and exit
                             }
                         }
                     }
                 }
             }
         }
-        HashMapStore(position.stringify(), alpha, beta, score, depth);
+        HashMapStore(position.stringify(), alpha, beta, score, depth); // save after all subnodes are searched
         return {-score, false};
     };
 
-    void StartAbdada(ChessBoard position, int depth, pair<float, chess_move> *return_pointer)
+    void StartAbdada(ChessBoard position, int depth, pair<float, chess_move> *return_pointer) // basically abdada, but with a lot less ifs and it returns the score and move
     {
         float score = -INFINITY; // just get the worst possible baseline so all other moves are better
         bool on_eval;
         float alpha = -INFINITY;
         float beta = INFINITY;
         bool exclusive = false;
-        const auto [alpha, beta, score, on_eval] = HashMapRetrieve(position.stringify(), alpha, beta, depth, exclusive); // basically just a stright copy from the wiki, don't ask me why or how, it is what it is
-        chess_move *moves;
-        int moves_len;
-        const auto [moves, moves_len] = position.gen_moves();
+        tie(alpha, beta, score, on_eval) = HashMapRetrieve(position.stringify(), alpha, beta, depth, exclusive); // basically just a stright copy from the wiki, don't ask me why or how, it is what it is
+        vector<chess_move> moves;
+        moves = position.gen_moves();
         bool alldone = false;
         bool sub_exclusive;
         pair<float, bool> value;
@@ -182,7 +182,7 @@ private:
             if ((alpha < beta) && !alldone)
             {
                 alldone = true;
-                for (int j = 0; j < moves_len; j++)
+                for (int j = 0; j < moves.size(); j++)
                 {
                     chess_move Cmove = moves[j];
                     if (alpha < beta)
@@ -214,18 +214,48 @@ private:
         *return_pointer = {score, best_move};
         return;
     };
-    chess_move operator()(ChessBoard position, int depth, int n_threads)
+    // Starting script for the abdada algorithm
+public:
+    chess_move search(ChessBoard position)
     {
-        pair<float, chess_move> *some_func_return;
-        thread *ThreadList;
+        pair<float, chess_move> *some_func_return = new pair<float, chess_move>[n_threads]; // function return
+        thread *ThreadList = new thread[n_threads];                                         // a list of threads
+
         for (int i = 0; i < n_threads; i++)
         {
-            ThreadList[i] = thread(StartAbdada, position, depth, &(some_func_return[i]));
+            ThreadList[i] = thread([this](auto arg1, auto arg2, auto arg3)
+                                   { this->StartAbdada(arg1, arg2, arg3); },
+                                   ChessBoard(position), depth, &(some_func_return[i])); // start the threads
         }
         for (int i = 0; i < n_threads; i++)
         {
-            ThreadList[i].join();
+            ThreadList[i].join(); // join the threads
         }
-        return std::get<1>(some_func_return[0]);
+        delete[] ThreadList;
+        delete[] some_func_return;
+        return std::get<1>(some_func_return[0]); // return the best move
     };
+};
+
+int main()
+{
+    int n_threads, depth;
+    ChessBoard TheBoard;
+    cin >> n_threads;
+    cin >> depth;
+    float (*heuristics_func)(ChessBoard);
+    heuristics_func = &nojus;
+    abdada the_AI(n_threads, depth, heuristics_func);
+    string Uin;
+    while (TheBoard.outcome() == 3)
+    {
+        TheBoard.move(the_AI.search(TheBoard));
+        TheBoard.display_position("an interesting position");
+
+        cin >> Uin;
+        TheBoard.user_move(Uin);
+        TheBoard.display_position("a less interesting position");
+    }
+    cout << TheBoard.true_outcome();
+    return 0;
 };
