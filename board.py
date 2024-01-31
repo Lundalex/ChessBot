@@ -110,7 +110,7 @@ class Board:
     def UpdateBoardStr(self):
         
         if not self.pcs:
-            raise ValueError("Board is empty, no pieces to get positions for.")
+            raise ValueError("Board is empty -> no pieces to get positions for")
         
         boardStr = ""
         emptyIndeces = 0
@@ -150,31 +150,38 @@ class Board:
         return self.boardStr
 
     # Returns all legal moves for current piece positions
+    # Check considered
+    # Note: cost = pieceCount * cost(GetLegalMoves())
+    def GetLegalMovesCheckConsidered(self, colorKey):
+        legalMovesNoCheck = self.GetLegalMoves(colorKey)
+
+        # Move is legal if the enemy does not have a legal move (check not considered) that captures the king with color of colorKey
+        legalMovesCheckConsidered = []
+        for legalMoveNoCheck in legalMovesNoCheck:
+            enemyColorKey = 0b0000 if colorKey == 0b1000 else 0b1000
+            enemyLegalMoves = self.GetLegalMoves(legalMoveNoCheck[0], legalMoveNoCheck[1], enemyColorKey)
+            if self.__GetKingSquare(colorKey) not in [move[1] for move in enemyLegalMoves]:
+                legalMovesCheckConsidered.append(legalMoveNoCheck)
+
+    # Returns all legal moves for current piece positions
+    # Check not considered
     def GetLegalMoves(self, colorKey):
-        legalMoves = set()
-        for curSquare, pieceKey in enumerate(self.pcs):
-            pieceChar = GetPieceChar(pieceKey)
-            pieceColor = 0b1000 if pieceChar.isupper() else 0b0000
-
-            # Only get legal moves for the chosen color
-            if (pieceColor != colorKey):
-                continue
-
-            pieceCharLower = pieceChar.lower()
-            if pieceCharLower == "p":
-                legalMoves.update(self.__GetLegalMovesPawn(curSquare, pieceColor))
-            if pieceCharLower == "n":
-                legalMoves.update(self.__GetLegalMovesKnight(curSquare, pieceColor))
-            elif pieceCharLower == "b":
-                legalMoves.update(self.__GetLegalMovesBishop(curSquare, pieceColor))
-            elif pieceCharLower == "r":
-                legalMoves.update(self.__GetLegalMovesRook(curSquare, pieceColor))
-            elif pieceCharLower == "q":
-                legalMoves.update(self.__GetLegalMovesQueen(curSquare, pieceColor))
-            elif pieceCharLower == "k":
-                legalMoves.update(self.__GetLegalMovesKing(curSquare, pieceColor))
+        legalMoves = self.__GetLegalMovesFromPcs(self.pcs, colorKey)
 
         return legalMoves
+
+    # Returns all legal moves after a move
+    def GetLegalMovesAfterMove(self, fromSquare, toSquare, colorKey):
+
+        # Make move
+        pcsCopy = self.pcs
+        pcsCopy[toSquare] = pcsCopy[fromSquare]
+        pcsCopy[fromSquare] = 0
+
+        # Get legal moves
+        enemyLegalMoves = self.__GetLegalMovesFromPcs(pcsCopy, colorKey)
+
+        return enemyLegalMoves
 
     # Returns all legal moves for a specific piece
     def GetLegalMovesPiece(self, curSquare, pieceKey):
@@ -200,6 +207,32 @@ class Board:
         return legalMoves
 
     # -- Helper functions --
+
+    def __GetLegalMovesFromPcs(self, pcs, colorKey):
+        legalMoves = set()
+        for curSquare, pieceKey in enumerate(pcs):
+            pieceChar = GetPieceChar(pieceKey)
+            pieceColor = 0b1000 if pieceChar.isupper() else 0b0000
+
+            # Only get legal moves for the chosen color
+            if (pieceColor != colorKey):
+                continue
+
+            pieceCharLower = pieceChar.lower()
+            if pieceCharLower == "p":
+                legalMoves.update(self.__GetLegalMovesPawn(curSquare, pieceColor))
+            if pieceCharLower == "n":
+                legalMoves.update(self.__GetLegalMovesKnight(curSquare, pieceColor))
+            elif pieceCharLower == "b":
+                legalMoves.update(self.__GetLegalMovesBishop(curSquare, pieceColor))
+            elif pieceCharLower == "r":
+                legalMoves.update(self.__GetLegalMovesRook(curSquare, pieceColor))
+            elif pieceCharLower == "q":
+                legalMoves.update(self.__GetLegalMovesQueen(curSquare, pieceColor))
+            elif pieceCharLower == "k":
+                legalMoves.update(self.__GetLegalMovesKing(curSquare, pieceColor))
+
+        return legalMoves
 
     def __GetLegalMovesQueen(self, curSquare, color):
         queenLegalMoves = set()
@@ -298,10 +331,17 @@ class Board:
             return True
         return False
 
+    def __GetKingSquare(self, color):
+        for i, pieceKey in enumerate(self.pcs):
+            if pieceKey & 0b1000 == color:
+                return i
+        else:
+            raise ValueError("No king of colorKey", color, "found -> no legal moves can be generated")
+
     # Returns the approximated board evaluation
     def GetEvaluation(self):
         return "yes"
-    
+
 class Interface:
 
     # Initializes Interface variables
@@ -417,7 +457,7 @@ print(board.GetLegalMoves(0b1000))
 colorTurn = 0b1000
 interface = Interface(board)
 running = True
-# This is very much spaghetti code, but it will have to be rewritten for implementing the bot
+# This is very much spaghetti code, but it will have to be rewritten for implementing the bot anyways
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
