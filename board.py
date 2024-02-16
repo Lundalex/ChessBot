@@ -21,13 +21,13 @@ class Board:
             self.pcs.append(0b0000)
         self.pawnMoveOffsetsWhite = {
             "forwardOneWhite": 8,
-            # "forwardTwoWhite": 16,
+            "forwardTwoWhite": 16,
             "captureLeftWhite": 7,
             "captureRightWhite": 9
         }
         self.pawnMoveOffsetsBlack = {
             "forwardOneBlack": -8,
-            # "forwardTwoBlack": -16,
+            "forwardTwoBlack": -16,
             "captureLeftBlack": -7,
             "captureRightBlack": -9,
         }
@@ -149,39 +149,50 @@ class Board:
         self.SetBoardStr()
         return self.boardStr
 
-    # Returns all legal moves for current piece positions
-    # Check considered
-    # Note: cost = pieceCount * cost(GetLegalMoves())
+    def IsMoveValidCheckConsidered(self, fromSquare, toSquare, colorKey):
+        # Simulate the move
+        originalPiece = self.pcs[toSquare]  # Store the piece at the destination square
+        self.pcs[toSquare] = self.pcs[fromSquare]
+        self.pcs[fromSquare] = 0
+
+        # Check if the king is in check after the move
+        kingInCheck = self.IsKingInCheck(colorKey)
+
+        # Revert the move
+        self.pcs[fromSquare] = self.pcs[toSquare]
+        self.pcs[toSquare] = originalPiece  # Restore the original piece at the destination square
+
+        # Return True if the king is not in check, meaning the move is valid
+        return not kingInCheck
+
+    # Returns all legal moves (considering checks)
     def GetLegalMovesCheckConsidered(self, colorKey):
-        legalMovesNoCheck = self.GetLegalMoves(colorKey)
+        legalMoves = self.GetLegalMoves(colorKey)  # Get all legal moves without considering check
+        legalMovesCheckConsidered = set()
 
-        # Move is legal if the enemy does not have a legal move (check not considered) that captures the king with color of colorKey
-        legalMovesCheckConsidered = []
-        for legalMoveNoCheck in legalMovesNoCheck:
-            enemyColorKey = 0b0000 if colorKey == 0b1000 else 0b1000
-            enemyLegalMoves = self.GetLegalMoves(legalMoveNoCheck[0], legalMoveNoCheck[1], enemyColorKey)
-            if self.__GetKingSquare(colorKey) not in [move[1] for move in enemyLegalMoves]:
-                legalMovesCheckConsidered.append(legalMoveNoCheck)
+        for fromSquare, toSquare in legalMoves:
+            if self.IsMoveValidCheckConsidered(fromSquare, toSquare, colorKey):
+                legalMovesCheckConsidered.add((fromSquare, toSquare))
 
+        return legalMovesCheckConsidered
+
+    def IsKingInCheck(self, colorKey):
+        kingSquare = self.GetKingSquare(colorKey)
+        opponentColorKey = 0b0000 if colorKey == 0b1000 else 0b1000
+        opponentMoves = self.__GetLegalMovesFromPcs(self.pcs, opponentColorKey)
+        
+        # Check if any opponent's move can capture the king
+        for _, toSquare in opponentMoves:
+            if toSquare == kingSquare:
+                return True
+        return False
+    
     # Returns all legal moves for current piece positions
     # Check not considered
     def GetLegalMoves(self, colorKey):
         legalMoves = self.__GetLegalMovesFromPcs(self.pcs, colorKey)
 
         return legalMoves
-
-    # Returns all legal moves after a move
-    def GetLegalMovesAfterMove(self, fromSquare, toSquare, colorKey):
-
-        # Make move
-        pcsCopy = self.pcs
-        pcsCopy[toSquare] = pcsCopy[fromSquare]
-        pcsCopy[fromSquare] = 0
-
-        # Get legal moves
-        enemyLegalMoves = self.__GetLegalMovesFromPcs(pcsCopy, colorKey)
-
-        return enemyLegalMoves
 
     # Returns all legal moves for a specific piece
     def GetLegalMovesPiece(self, curSquare, pieceKey):
@@ -204,8 +215,29 @@ class Board:
         elif pieceCharLower == "k":
             legalMoves.update(self.__GetLegalMovesKing(curSquare, pieceColor))
 
-        return legalMoves
+        legalMovesCheckConsidered = set()
 
+        for fromSquare, toSquare in legalMoves:
+            if self.IsMoveValidCheckConsidered(fromSquare, toSquare, pieceColor):
+                legalMovesCheckConsidered.add((fromSquare, toSquare))
+
+        return legalMovesCheckConsidered
+
+    def IsCheckmate(self, colorKey):
+        if not self.IsKingInCheck(colorKey):
+            return False  # Not in check, so it can't be checkmate
+
+        # Try to find any legal move that can get the king out of check
+        for fromSquare in range(64):
+            pieceKey = self.pcs[fromSquare]
+            if pieceKey != 0 and (pieceKey & 0b1000) == colorKey:
+                legalMoves = self.GetLegalMovesPiece(fromSquare, pieceKey)
+                for _, toSquare in legalMoves:
+                    if self.IsMoveValidCheckConsidered(fromSquare, toSquare, colorKey):
+                        return False  # Found a move that can get the king out of check
+        
+        return True  # No moves available to get the king out of check
+    
     # -- Helper functions --
 
     def __GetLegalMovesFromPcs(self, pcs, colorKey):
@@ -270,7 +302,8 @@ class Board:
     def __GetLegalMovesKing(self, curSquare, color):
         kingLegalMoves = set()
         for kingMoveOffset in self.kingMoveOffsets.values():
-            if (self.__CheckBoardPcsBounds(curSquare + kingMoveOffset)):
+            if (self.__CheckBoardPcsBounds(curSquare + kingMoveOffset) and 
+                self.__CheckBounds(curSquare, curSquare + kingMoveOffset)):
                 if (self.pcs[curSquare + kingMoveOffset] & 0b1000 != color or
                     self.pcs[curSquare + kingMoveOffset] == 0):
                     kingLegalMoves.add((curSquare, curSquare + kingMoveOffset))
@@ -279,7 +312,8 @@ class Board:
     def __GetLegalMovesKnight(self, curSquare, color):
         knightLegalMoves = set()
         for knightMoveOffset in self.knightMoveOffsets.values():
-            if (self.__CheckBoardPcsBounds(curSquare + knightMoveOffset)):
+            if (self.__CheckBoardPcsBounds(curSquare + knightMoveOffset) and
+                self.__CheckBoundsKnight(curSquare, curSquare + knightMoveOffset)):
                 if (self.pcs[curSquare + knightMoveOffset] & 0b1000 != color or
                     self.pcs[curSquare + knightMoveOffset] == 0):
                     knightLegalMoves.add((curSquare, curSquare + knightMoveOffset))
@@ -287,42 +321,44 @@ class Board:
 
     def __GetLegalMovesPawn(self, curSquare, color):
         pawnLegalMoves = set()
-        if (color == 0b0000):
-            for pawnMoveOffset in self.pawnMoveOffsetsWhite.values():
-                if (self.__CheckBoardPcsBounds(curSquare + pawnMoveOffset)):
-                    if (pawnMoveOffset == 8):
-                        if (self.pcs[curSquare + pawnMoveOffset] == 0):
-                            pawnLegalMoves.add((curSquare, curSquare + pawnMoveOffset))
-                    else:
-                        if (self.pcs[curSquare + pawnMoveOffset] & 0b1000 != color  and
-                            self.pcs[curSquare + pawnMoveOffset] != 0):
-                            pawnLegalMoves.add((curSquare, curSquare + pawnMoveOffset))
-            return pawnLegalMoves
-        else: # color == 0b0000
-            for pawnMoveOffset in self.pawnMoveOffsetsBlack.values():
-                if (self.__CheckBoardPcsBounds(curSquare + pawnMoveOffset)):
-                    if (pawnMoveOffset == -8):
-                        if (self.pcs[curSquare + pawnMoveOffset] == 0):
-                            pawnLegalMoves.add((curSquare, curSquare + pawnMoveOffset))
-                    else:
-                        if (self.pcs[curSquare + pawnMoveOffset] & 0b1000 != color and
-                            self.pcs[curSquare + pawnMoveOffset] != 0):
-                            pawnLegalMoves.add((curSquare, curSquare + pawnMoveOffset))
-            return pawnLegalMoves
-
-        # self.pawnOffsets = {
-        #     "forwardOneBlack": -8,
-        #     "forwardTwoBlack": -16,
-        #     "forwardOneWhite": 8,
-        #     "forwardTwoWhite": 16,
-        #     "captureLeftBlack": -7,
-        #     "captureRightBlack": -9,
-        #     "captureLeftWhite": 7,
-        #     "captureRightWhite": 9
-        # }
+        startingRows = {
+            0b0000: range(8, 16),  # White pawns starting row
+            0b1000: range(48, 56)  # Black pawns starting row
+        }
+        if color == 0b0000:  # White pawn
+            for moveName, pawnMoveOffset in self.pawnMoveOffsetsWhite.items():
+                targetSquare = curSquare + pawnMoveOffset
+                if self.__CheckBoardPcsBounds(targetSquare):
+                    if "forwardOne" in moveName and self.pcs[targetSquare] == 0:
+                        pawnLegalMoves.add((curSquare, targetSquare))
+                    elif "forwardTwoWhite" in moveName and curSquare in startingRows[color] and self.pcs[curSquare + 8] == 0 and self.pcs[targetSquare] == 0:
+                        # Ensure the pawn is making its first move by checking its position
+                        pawnLegalMoves.add((curSquare, targetSquare))
+                    elif "capture" in moveName:
+                        if self.pcs[targetSquare] & 0b1000 != color and self.pcs[targetSquare] != 0:
+                            pawnLegalMoves.add((curSquare, targetSquare))
+        else:  # Black pawn
+            for moveName, pawnMoveOffset in self.pawnMoveOffsetsBlack.items():
+                targetSquare = curSquare + pawnMoveOffset
+                if self.__CheckBoardPcsBounds(targetSquare):
+                    if "forwardOne" in moveName and self.pcs[targetSquare] == 0:
+                        pawnLegalMoves.add((curSquare, targetSquare))
+                    elif "forwardTwoBlack" in moveName and curSquare in startingRows[color] and self.pcs[curSquare - 8] == 0 and self.pcs[targetSquare] == 0:
+                        # Ensure the pawn is making its first move by checking its position
+                        pawnLegalMoves.add((curSquare, targetSquare))
+                    elif "capture" in moveName:
+                        if self.pcs[targetSquare] & 0b1000 != color and self.pcs[targetSquare] != 0:
+                            pawnLegalMoves.add((curSquare, targetSquare))
+        return pawnLegalMoves
 
     def __CheckBounds(self, lastSquare, nextSquare):
         if (self.__CheckBoardPcsBounds(nextSquare) and -1 <= (lastSquare % 8 - nextSquare % 8) <= 1):
+            return True
+        return False
+    
+    # Modified version of __CheckBounds() to accomodate for the knight being able to move up to 2 collumns / 2 rows
+    def __CheckBoundsKnight(self, lastSquare, nextSquare):
+        if (self.__CheckBoardPcsBounds(nextSquare) and -2 <= (lastSquare % 8 - nextSquare % 8) <= 2):
             return True
         return False
     
@@ -331,25 +367,29 @@ class Board:
             return True
         return False
 
-    def __GetKingSquare(self, color):
+    def GetKingSquare(self, color):
         for i, pieceKey in enumerate(self.pcs):
-            if pieceKey & 0b1000 == color:
+            # Corrected to check specifically for the king
+            if pieceKey & 0b0111 == 0b0110 and pieceKey & 0b1000 == color:
                 return i
-        else:
-            raise ValueError("No king of colorKey", color, "found -> no legal moves can be generated")
+        raise ValueError("No king of colorKey", color, "found -> no legal moves can be generated")
 
     # Returns the approximated board evaluation
     def GetEvaluation(self):
         return "yes"
 
+    def ResetGame(self):
+        self.SetStart()
+        self.UpdateBoardStr()
+        
 class Interface:
 
     # Initializes Interface variables
     # Requires board positions and legal moves
-    def __init__(self, board, colorTurn=0b1000):
+    def __init__(self, board, squareSize, colorTurn=0b1000):
         self.boardPositions = board.pcs
         self.boardSize = 8
-        self.squareSize = 80
+        self.squareSize = squareSize
         self.width = self.height = self.squareSize * self.boardSize
         self.fromSquare = 64
         self.toSquare = 64
@@ -383,7 +423,7 @@ class Interface:
                 pieceChar = GetPieceChar(self.boardPositions[boardIndex])
                 self.__DrawSquare(col, row, squareColor)
                 self.__DrawPiece(row, col, pieceChar)
-        self.FlipScreen()
+        pygame.display.flip()
     
     # Returns move data
     def RightClickAction(self, mousePosXY, colorKey, board):
@@ -403,7 +443,7 @@ class Interface:
 
         # Set toSquare variable (if the move is legal)
         else:
-            if ((fromSquare, squareKey) in board.GetLegalMoves(colorKey)):
+            if ((fromSquare, squareKey) in board.GetLegalMovesCheckConsidered(colorKey)):
                 self.toSquare = squareKey
                 move = self.fromSquare, self.toSquare
                 self.fromSquare = 64
@@ -414,9 +454,6 @@ class Interface:
                 self.toSquare = 64
 
         return move[0], move[1], moveIsLegal
-    
-    def FlipScreen(self):
-        pygame.display.flip()
 
     # -- Helper functions --
 
@@ -444,26 +481,76 @@ class Interface:
             piece_image = self.pieces[pieceChar]
             self.screen.blit(piece_image, (col*self.squareSize, row*self.squareSize))
 
+    def DisplayMessage(self, message):
+        pygame.font.init()
+        font = pygame.font.Font(None, 80)
+        textSurface = font.render(message, True, (255, 0, 0))
+        textRect = textSurface.get_rect(center=(self.width // 2, self.height - 60))
+        self.screen.blit(textSurface, textRect)
+        pygame.display.flip()
+
+    def DisplayWinner(self, board, colorKey, displayMessage):
+        # Find the king's position for the given color
+        kingSquare = board.GetKingSquare(colorKey)
+        kingRow, kingCol = divmod(kingSquare, 8)
+        
+        endTime = pygame.time.get_ticks() + 4000
+        flashDuration = 200
+        lastFlashTime = pygame.time.get_ticks()
+        flashOn = True
+
+        while pygame.time.get_ticks() < endTime:
+            currentTime = pygame.time.get_ticks()
+            if currentTime - lastFlashTime > flashDuration:
+                flashOn = not flashOn  # Toggle flash state
+                lastFlashTime = currentTime
+
+                if flashOn:
+                    # Draw the king's square in red
+                    self.__DrawSquare(kingCol, kingRow, pygame.Color("red"))
+                    self.__DrawPiece(kingRow, kingCol, GetPieceChar(board.pcs[kingSquare]))
+                else:
+                    # Redraw the board as it normally appears
+                    self.DrawBoard(board.GetLegalMoves(colorKey))
+
+                pygame.display.flip()
+        
+        self.DisplayMessage(displayMessage)
+
+    def StartNewGame(self, board):
+        board.ResetGame()
+        self.DrawBoard(board.GetLegalMoves(board.turnToMove))
+        
 # Board Setup
 board = Board()
 board.SetStart()
 board.UpdateBoardStr()
 
-# Example use
-print(board.boardStr)
-print(board.GetLegalMoves(0b1000))
+# # Example use
+# print(board.boardStr)
+# print(board.GetLegalMoves(0b1000))
 
 # Interface setup
 colorTurn = 0b1000
-interface = Interface(board)
+interface = Interface(board, 100)
 running = True
+isCheckMate = False
 # This is very much spaghetti code, but it will have to be rewritten for implementing the bot anyways
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_RETURN:
+                board = Board()
+                board.SetStart()
+                board.UpdateBoardStr()
+                colorTurn = 0b1000
+                interface = Interface(board, 100)
+                running = True
+                isCheckMate = False
         elif event.type == pygame.MOUSEBUTTONDOWN:
-            if event.button == 1:
+            if event.button == 1 and not isCheckMate:
                 mousePos = pygame.mouse.get_pos()
                 colorTurnCopy = 0b0000
                 if (colorTurn == 0b0000):
@@ -480,4 +567,10 @@ while running:
                     interface.DrawBoard(board.GetLegalMoves(colorTurn))
                 else:
                     interface.DrawBoard(board.GetLegalMovesPiece(fromSquare, board.pcs[fromSquare]))
+                    
+                if board.IsCheckmate(colorTurn):
+                    # Display winner screen
+                    winnerColor = "White" if colorTurn == 0b0000 else "Black"
+                    interface.DisplayWinner(board, colorTurn, "Press RETURN to reset")
+                    isCheckMate = True
 pygame.quit()
