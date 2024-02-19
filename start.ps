@@ -1,0 +1,13 @@
+# Define paths to your programs
+$programA = ".\.exe"
+$programB = ".\b.py"
+
+# Create named pipes for communication
+$pipeA = "\\.\pipe\ProgramAPipe"
+$pipeB = "\\.\pipe\ProgramBPipe"
+
+# Start program A with its input coming from pipe B and output going to pipe A
+Start-Process -FilePath $programA -ArgumentList $pipeB, $pipeA -NoNewWindow
+
+# Start program B with its input coming from pipe A and output going to pipe B
+Start-Process -FilePath python -ArgumentList $programB, $pipeA, $pipeB -NoNewWindow
