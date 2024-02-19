@@ -58,7 +58,7 @@ class abdada:
     def __call__(self, position: Chess_Board) -> Any:
         threads = [
             NewThread(target=self.__start_abdada, args=(copy(position), self.depth))
-            for i in range(self.n_threads)
+            for _ in range(self.n_threads)
         ]
         for i in threads:
             i.start()

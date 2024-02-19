@@ -2,7 +2,7 @@
 #include <map>
 #include <string>
 #include "thc-chess-library/src/thc.h"
-// #include "thc-chess-library/src/thc.cpp"
+#include "thc-chess-library/src/thc.cpp"
 using namespace std;
 
 typedef thc::Move chess_move;
@@ -70,7 +70,7 @@ public:
     void unmove()
     {
 
-        actual_board.PopMove(old_moves[old_moves.size()]);
+        actual_board.PopMove(old_moves[old_moves.size() - 1]);
         old_moves.pop_back();
     }
 
@@ -124,10 +124,19 @@ int piece_score(char some_square)
 
 float nojus(ChessBoard position)
 {
-    int return_score;
-    for (int i; i < 64; i++)
+    int return_score = 0;
+    // return_score = 0;
+    for (int i = 0; i < 64; i++)
     {
+        // cout << i << "\n";
         return_score = return_score + piece_score(position.actual_board.squares[i]);
     }
-    return return_score;
+    if (position.actual_board.white)
+    {
+        return return_score;
+    }
+    else
+    {
+        return -return_score;
+    }
 };

@@ -1,21 +1,14 @@
-#include <iostream>
-#include <map>
 #include <string>
 #include <mutex>
 #include <tuple>
 #include <thread>
 #include "ChessBoard.cpp"
+// #include "map_save_to_file.cpp"
+//  #include "thc-chess-library/src/thc.h"
 #include <cmath>
+#include "small_header.h"
 
 using namespace std;
-
-struct hashmap_data // struct to store data in the hashmap
-{
-    float score;
-    int depth;
-    int nproc;
-    int flag;
-};
 
 class abdada
 {
@@ -26,8 +19,13 @@ public:
     bool debug;                      // wheter to turn on or off debug mode , default is off
     abdada(int n_threads, int depth, float (*heuristics)(ChessBoard), bool debug = false) : n_threads(n_threads), depth(depth), heuristics(heuristics), debug(debug){};
 
+    abdada()
+    {
+    }
+
 private:
     mutex lock;                                     // thread lock
+    mutex print_lock;                               // thead lock for printing
     map<string, hashmap_data> hashmap;              // class hashmap
     map<string, hashmap_data> *Phashmap = &hashmap; // refrence to hashmap so threads can access it
 
@@ -111,22 +109,35 @@ private:
         return;
     };
 
-    pair<float, bool> InnerAbdada(ChessBoard position, int alpha, int beta, int depth, bool exclusive)
+    pair<float, bool> InnerAbdada(ChessBoard position, float alpha, float beta, int depth, bool exclusive)
     {
-        if (!(position.outcome() == 3)) // return the terminal value , a very big terminal value, just no infinity, depening on winning player
-            return {position.outcome() * 9999999999999999, false};
+        // cout << "edfjgbdsacd\n";
+        if (!(position.outcome() == 3))
+        { // return the terminal value , a very big terminal value, just no infinity, depening on winning player
+            // cout << "exit 1 : " << -position.outcome() * 9999999999999999 << "\n";
+
+            return {-position.outcome() * 9999999999999999, false};
+        }
         if (depth == 0)
-            return {(*heuristics)(position), false};
+        {
+            return {-(*heuristics)(position), false};
+        }
         float score = -INFINITY; // just get the worst possible baseline so all other moves are better
         bool on_eval;
-        tie(alpha, beta, score, on_eval) = HashMapRetrieve(position.stringify(), alpha, beta, depth, exclusive); // basically just a stright copy from the wiki, don't ask me why or how, it is what it is
+        tie(score, alpha, beta, on_eval) = HashMapRetrieve(position.stringify(), alpha, beta, depth, exclusive); // basically just a stright copy from the wiki, don't ask me why or how, it is what it is
         vector<chess_move> moves;
         moves = position.gen_moves();
 
-        if (on_eval) // return if anothre node is evalutaing the current pos and the node is in exclusice mode
+        if (on_eval)
+        { // return if anothre node is evalutaing the current pos and the node is in exclusice mode
+            // cout << "exit 3\n";
             return {score, true};
-        if (!(alpha < beta)) // if the node is pruned
-            return {score, false};
+        }
+        if (alpha >= beta)
+        { // if the node is pruned
+            // cout << "exit 4" << alpha << " " << beta << " \n";
+            return {-score, false};
+        }
         bool alldone = false;
         bool sub_exclusive;
         pair<float, bool> value;    // the evaluted nodes value
@@ -138,20 +149,26 @@ private:
                 for (int j = 0; j < moves.size(); j++) // iterating over all moves
                 {
                     chess_move Cmove = moves[j]; // current move
+                    // print_lock.lock();
+                    //  cout << Cmove.src << " : " << Cmove.dst << " :\n";
+                    // print_lock.unlock();
                     if (alpha < beta)
                     {
-                        sub_exclusive = ((i == 0) && (j != 0));                           // is in exclusive mode if ,and only if, both the searched node ISN'T the first node being evaluted (this is to get a good alpha/beta) and is on the first pass through
-                        position.move(Cmove);                                             // do the move
-                        value = InnerAbdada(position, alpha, beta, depth, sub_exclusive); // searched the resulting move
-                        position.unmove();                                                // undo the move
-                        if (std::get<1>(value))                                           // check id the node is under eval
+                        sub_exclusive = ((i == 0) && (j != 0));                                             // is in exclusive mode if ,and only if, both the searched node ISN'T the first node being evaluted (this is to get a good alpha/beta) and is on the first pass through
+                        position.move(Cmove);                                                               // do the move
+                        value = InnerAbdada(position, -beta, -max(alpha, score), depth - 1, sub_exclusive); // searched the resulting move
+                        position.unmove();                                                                  //
+                        // cout << Cmove.dst << ";:;:;:\n";                                  // undo the move
+                        if (std::get<1>(value)) // check id the node is under eval
                             alldone = false;
                         else if (std::get<0>(value) > score)
                         {
                             score = std::get<0>(value); // save the score if it's better than a prevoius score
                             if (!(score < beta))
                             {
+
                                 HashMapStore(position.stringify(), alpha, beta, score, depth);
+                                // mcout << "exit 5\n";
                                 return {-score, false}; // if the current node is pruned , save the score and exit
                             }
                         }
@@ -160,37 +177,53 @@ private:
             }
         }
         HashMapStore(position.stringify(), alpha, beta, score, depth); // save after all subnodes are searched
+        // cout << "exit 6\n";
         return {-score, false};
     };
 
     void StartAbdada(ChessBoard position, int depth, pair<float, chess_move> *return_pointer) // basically abdada, but with a lot less ifs and it returns the score and move
     {
+        // cout << "I've started\n";
         float score = -INFINITY; // just get the worst possible baseline so all other moves are better
         bool on_eval;
         float alpha = -INFINITY;
         float beta = INFINITY;
+        // cout << alpha << " is it good?-\n";
+        // cout << beta << " is it good.-\n";
+        // cout << (alpha < beta) << " is it good!-\n";
         bool exclusive = false;
-        tie(alpha, beta, score, on_eval) = HashMapRetrieve(position.stringify(), alpha, beta, depth, exclusive); // basically just a stright copy from the wiki, don't ask me why or how, it is what it is
+        tie(score, alpha, beta, on_eval) = HashMapRetrieve(position.stringify(), alpha, beta, depth, exclusive); // basically just a stright copy from the wiki, don't ask me why or how, it is what it is
         vector<chess_move> moves;
         moves = position.gen_moves();
         bool alldone = false;
         bool sub_exclusive;
         pair<float, bool> value;
         chess_move best_move;
+
         for (int i = 0; i < 2; i++)
         {
+            // cout << alpha << " is it good?\n";
+            // cout << beta << " is it good.\n";
+            // cout << (alpha < beta) << " is it good!\n";
             if ((alpha < beta) && !alldone)
             {
                 alldone = true;
+                // cout << moves.size() << " cray cray\n";
                 for (int j = 0; j < moves.size(); j++)
                 {
                     chess_move Cmove = moves[j];
+                    // cout << Cmove.src << " : " << Cmove.dst << " before\n";
                     if (alpha < beta)
                     {
                         sub_exclusive = ((i == 0) && (j != 0));
                         position.move(Cmove);
-                        value = InnerAbdada(position, alpha, beta, depth, sub_exclusive);
+                        print_lock.lock();
+                        // cout << Cmove.dst << " ; " << Cmove.src << " ; ";
+                        print_lock.unlock();
+                        // cout << "edfjgbdsacd";
+                        value = InnerAbdada(position, -beta, -max(alpha, score), depth - 1, sub_exclusive);
                         position.unmove();
+                        // cout << std::get<0>(value) << " " << score << " " << (std::get<0>(value) > score) << "\n";
                         if (std::get<1>(value))
                         {
                             alldone = false;
@@ -202,18 +235,24 @@ private:
                             if (!(score < beta))
                             {
                                 HashMapStore(position.stringify(), alpha, beta, score, depth);
-                                *return_pointer = {score, best_move};
+                                *return_pointer = make_pair(score, best_move);
                                 return;
                             }
                         }
                     }
+                    // cout << Cmove.src << " : " << Cmove.dst << " after\n";
                 }
             }
         }
         HashMapStore(position.stringify(), alpha, beta, score, depth);
-        *return_pointer = {score, best_move};
+        // cout << best_move.src << " : " << best_move.dst << ";\n";
+        // cout << (std::get<1>(*return_pointer)).src << " : " << (std::get<1>(*return_pointer)).dst << "|\n";
+        *return_pointer = make_pair(score, best_move);
+        // cout << (std::get<1>(*return_pointer)).src << " : " << (std::get<1>(*return_pointer)).dst << "|-\n";
+
         return;
     };
+
     // Starting script for the abdada algorithm
 public:
     chess_move search(ChessBoard position)
@@ -231,9 +270,12 @@ public:
         {
             ThreadList[i].join(); // join the threads
         }
+
+        chess_move r_move = std::get<1>(some_func_return[0]);
+        cout << r_move.src << " : " << r_move.dst << "|\n";
         delete[] ThreadList;
         delete[] some_func_return;
-        return std::get<1>(some_func_return[0]); // return the best move
+        return r_move; // return the best move
     };
 };
 
@@ -250,8 +292,9 @@ int main()
     while (TheBoard.outcome() == 3)
     {
         TheBoard.move(the_AI.search(TheBoard));
+        cout << TheBoard.old_moves[0].src << " " << TheBoard.old_moves[0].dst << "smthssss";
         TheBoard.display_position("an interesting position");
-
+        cout << nojus(TheBoard) << "\n";
         cin >> Uin;
         TheBoard.user_move(Uin);
         TheBoard.display_position("a less interesting position");
