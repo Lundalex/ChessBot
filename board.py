@@ -1,6 +1,7 @@
 import math
-import pygame
 import os
+os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
+import pygame
 
 from chess_utils import *
 
@@ -15,6 +16,7 @@ class Board:
         self.enPessantTargetSquare = 0
         self.halfmoves = 0
         self.fullmoves = 0
+        self.colorTurn = 0b1000
         for _ in range(64):
             # abc -> Piece key
             # d -> Piece color
@@ -84,7 +86,7 @@ class Board:
         Q, q = 0b0101, 0b1101
         K, k = 0b0110, 0b1110
 
-        startConfig = [
+        startconfiguration = [
             R, N, B, Q, K, B, N, R,
             P, P, P, P, P, P, P, P,
             0, 0, 0, 0, 0, 0, 0, 0,
@@ -95,15 +97,19 @@ class Board:
             r, n, b, q, k, b, n, r,
         ]
 
-        self.SetBoard(startConfig, "w", "KQkq", 0, 0, 0)
-    
+        self.SetBoard(startconfiguration, "w", "KQkq", 0, 0, 0)
+
     def MakeMove(self, fromSquare, toSquare):
         # 64: No square selected
         if (fromSquare != 64 and toSquare != 64):
             self.pcs[toSquare] = self.pcs[fromSquare]
-            # 0: No piece square
+            # 0: No piece on the square
             self.pcs[fromSquare] = 0
 
+        if (self.colorTurn == 0b0000):
+            self.colorTurn = 0b1000
+        else:
+            self.colorTurn = 0b0000
         return board
 
     # Updates the self.boardStr variable
@@ -114,6 +120,8 @@ class Board:
         
         boardStr = ""
         emptyIndeces = 0
+        # Algorithm for generating the string for board positions.
+        # Example: rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 0
         for i, pieceKey in enumerate(self.pcs):
 
             # New row
@@ -144,51 +152,52 @@ class Board:
         self.boardStr = boardStr
     
     # Updates the self.boardStr variable, AND returns it
-    # Note: Accessing/modifying the self.boardStr variable directly is oftentimes more efficient
+    # Note: For modifications of boardStr, using UpdateBoardStr directly is more efficient
     def GetBoardStr(self):
         self.SetBoardStr()
         return self.boardStr
 
+    # Returns whether a specific move is legal or not
     def IsMoveValidCheckConsidered(self, fromSquare, toSquare, colorKey):
         # Simulate the move
-        originalPiece = self.pcs[toSquare]  # Store the piece at the destination square
+        originalPiece = self.pcs[toSquare]
         self.pcs[toSquare] = self.pcs[fromSquare]
         self.pcs[fromSquare] = 0
 
         # Check if the king is in check after the move
         kingInCheck = self.IsKingInCheck(colorKey)
 
-        # Revert the move
+        # Revert the simulated move
         self.pcs[fromSquare] = self.pcs[toSquare]
-        self.pcs[toSquare] = originalPiece  # Restore the original piece at the destination square
+        self.pcs[toSquare] = originalPiece
 
-        # Return True if the king is not in check, meaning the move is valid
         return not kingInCheck
 
     # Returns all legal moves (considering checks)
     def GetLegalMovesCheckConsidered(self, colorKey):
-        legalMoves = self.GetLegalMoves(colorKey)  # Get all legal moves without considering check
+        legalMoves = self.GetLegalMoves(colorKey)  # Get all legal moves (without considering checks)
         legalMovesCheckConsidered = set()
 
+        # For each possible move, remove all moves that do not place the same-colored king in check
         for fromSquare, toSquare in legalMoves:
             if self.IsMoveValidCheckConsidered(fromSquare, toSquare, colorKey):
                 legalMovesCheckConsidered.add((fromSquare, toSquare))
 
         return legalMovesCheckConsidered
-
+    
+    # Check if the king is in check for the current piece configuration
     def IsKingInCheck(self, colorKey):
         kingSquare = self.GetKingSquare(colorKey)
         opponentColorKey = 0b0000 if colorKey == 0b1000 else 0b1000
         opponentMoves = self.__GetLegalMovesFromPcs(self.pcs, opponentColorKey)
         
-        # Check if any opponent's move can capture the king
+        # Check if any one of the oppenents's moves can capture the king
         for _, toSquare in opponentMoves:
             if toSquare == kingSquare:
                 return True
         return False
     
-    # Returns all legal moves for current piece positions
-    # Check not considered
+    # Returns all legal moves for current piece positions (without considering checks)
     def GetLegalMoves(self, colorKey):
         legalMoves = self.__GetLegalMovesFromPcs(self.pcs, colorKey)
 
@@ -222,7 +231,8 @@ class Board:
                 legalMovesCheckConsidered.add((fromSquare, toSquare))
 
         return legalMovesCheckConsidered
-
+    
+    # Returns whether or not the current piece configuration results in a checkmate
     def IsCheckmate(self, colorKey):
         if not self.IsKingInCheck(colorKey):
             return False  # Not in check, so it can't be checkmate
@@ -236,9 +246,17 @@ class Board:
                     if self.IsMoveValidCheckConsidered(fromSquare, toSquare, colorKey):
                         return False  # Found a move that can get the king out of check
         
-        return True  # No moves available to get the king out of check
+        return True  # No moves available to get the king out of check -> Checkmate!
+
+    def GetKingSquare(self, color):
+        for i, pieceKey in enumerate(self.pcs):
+            # Corrected to check specifically for the king
+            if pieceKey & 0b0111 == 0b0110 and pieceKey & 0b1000 == color:
+                return i
+        raise ValueError("No king of colorKey", color, "found -> no legal moves can be generated")
     
     # -- Helper functions --
+    # (These functions can only be called from within this class)
 
     def __GetLegalMovesFromPcs(self, pcs, colorKey):
         legalMoves = set()
@@ -367,26 +385,18 @@ class Board:
             return True
         return False
 
-    def GetKingSquare(self, color):
-        for i, pieceKey in enumerate(self.pcs):
-            # Corrected to check specifically for the king
-            if pieceKey & 0b0111 == 0b0110 and pieceKey & 0b1000 == color:
-                return i
-        raise ValueError("No king of colorKey", color, "found -> no legal moves can be generated")
+    # -- AI functions --
+    # (These functions will send data to our AI model)
 
     # Returns the approximated board evaluation
     def GetEvaluation(self):
         return "yes"
 
-    def ResetGame(self):
-        self.SetStart()
-        self.UpdateBoardStr()
-        
+
 class Interface:
 
     # Initializes Interface variables
-    # Requires board positions and legal moves
-    def __init__(self, board, squareSize, colorTurn=0b1000):
+    def __init__(self, board, squareSize):
         self.boardPositions = board.pcs
         self.boardSize = 8
         self.squareSize = squareSize
@@ -398,19 +408,20 @@ class Interface:
         self.screen = pygame.display.set_mode((self.width, self.height))
         pygame.display.set_caption("Chess Bot")
         self.__LoadPieces()
-        self.DrawBoard(board.GetLegalMoves(colorTurn))
+        self.DrawBoard(board.GetLegalMoves(board.colorTurn))
     
     # Set self board position data
     def SetBoardPositions(self, boardList):
         self.boardPositions = boardList
 
     # Note: "RightClickAction()" is more efficient and should be used for user-made moves
+    # This function should only be used to do the AI-made moves
     def SetBoardPositionsAndDrawBoard(self, board, colorTurn=0b1000):
         self.SetBoardPositions(board.pcs)
         self.DrawBoard(board.GetLegalMoves(colorTurn))
 
-    # Draws the whole board using self board data
-    # Requires legal moves
+    # Draws the whole board using pieces configuration
+    # Also highlights any possible moves for the user
     def DrawBoard(self, legalMoves):
         colors = [pygame.Color("white"), pygame.Color("gray"), pygame.Color("orange")]
         for row in range(self.boardSize):
@@ -425,8 +436,9 @@ class Interface:
                 self.__DrawPiece(row, col, pieceChar)
         pygame.display.flip()
     
-    # Returns move data
+    # Converts a mouse click to a board move
     def RightClickAction(self, mousePosXY, colorKey, board):
+        # Get the clicked square on the board grid
         xSquare = math.floor(mousePosXY[0] / self.squareSize)
         ySquare = math.floor(mousePosXY[1] / self.squareSize)
 
@@ -454,33 +466,8 @@ class Interface:
                 self.toSquare = 64
 
         return move[0], move[1], moveIsLegal
-
-    # -- Helper functions --
-
-    def __LoadPieces(self):
-        self.pieces = {}
-        piece_names = [
-            'n', 'q', 'r', 'b', 'k', 'p',
-            'wN', 'wQ', 'wR', 'wB', 'wK', 'wP',
-            'mn', 'mq', 'mr', 'mb', 'mk', 'mp',
-            'mwN', 'mwQ', 'mwR', 'mwB', 'mwK', 'mwP'
-        ]
-        for piece in piece_names:
-            self.pieces[piece] = pygame.image.load(os.path.join('ChessPieces', piece + '.png'))
-            self.pieces[piece] = pygame.transform.scale(self.pieces[piece], (self.squareSize, self.squareSize))
-
-    def __DrawSquare(self, col, row, squareColor):
-        pygame.draw.rect(self.screen, squareColor, 
-                        pygame.Rect(col*self.squareSize, row*self.squareSize, 
-                        self.squareSize, self.squareSize))
-        
-    def __DrawPiece(self, row, col, pieceChar):
-        if pieceChar.isupper():
-            pieceChar = "w" + pieceChar
-        if pieceChar in self.pieces:
-            piece_image = self.pieces[pieceChar]
-            self.screen.blit(piece_image, (col*self.squareSize, row*self.squareSize))
-
+    
+    # Renders a message to the user interface
     def DisplayMessage(self, message):
         pygame.font.init()
         font = pygame.font.Font(None, 80)
@@ -489,6 +476,7 @@ class Interface:
         self.screen.blit(textSurface, textRect)
         pygame.display.flip()
 
+    # Render the checkmate animation (4 seconds)
     def DisplayWinner(self, board, colorKey, displayMessage):
         # Find the king's position for the given color
         kingSquare = board.GetKingSquare(colorKey)
@@ -517,26 +505,48 @@ class Interface:
         
         self.DisplayMessage(displayMessage)
 
-    def StartNewGame(self, board):
-        board.ResetGame()
-        self.DrawBoard(board.GetLegalMoves(board.turnToMove))
+    # -- Helper functions --
+    # (These functions can only be called from within this class)
+
+    def __LoadPieces(self):
+        self.pieces = {}
+        piece_names = [
+            'n', 'q', 'r', 'b', 'k', 'p',
+            'wN', 'wQ', 'wR', 'wB', 'wK', 'wP',
+            'mn', 'mq', 'mr', 'mb', 'mk', 'mp',
+            'mwN', 'mwQ', 'mwR', 'mwB', 'mwK', 'mwP'
+        ]
+        for piece in piece_names:
+            self.pieces[piece] = pygame.image.load(os.path.join('ChessPieces', piece + '.png'))
+            self.pieces[piece] = pygame.transform.scale(self.pieces[piece], (self.squareSize, self.squareSize))
+
+    def __DrawSquare(self, col, row, squareColor):
+        pygame.draw.rect(self.screen, squareColor, 
+                        pygame.Rect(col*self.squareSize, row*self.squareSize, 
+                        self.squareSize, self.squareSize))
         
+    def __DrawPiece(self, row, col, pieceChar):
+        if pieceChar.isupper():
+            pieceChar = "w" + pieceChar
+        if pieceChar in self.pieces:
+            piece_image = self.pieces[pieceChar]
+            self.screen.blit(piece_image, (col*self.squareSize, row*self.squareSize))
+
 # Board Setup
 board = Board()
 board.SetStart()
 board.UpdateBoardStr()
 
-# # Example use
-# print(board.boardStr)
-# print(board.GetLegalMoves(0b1000))
+# print(StrMove(34))
 
 # Interface setup
-colorTurn = 0b1000
-interface = Interface(board, 100)
+interface = Interface(board, 80)
 running = True
 isCheckMate = False
+board.MakeMove(*[int(i) for i in input().split(",")])
 # This is very much spaghetti code, but it will have to be rewritten for implementing the bot anyways
 while running:
+
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
@@ -545,32 +555,32 @@ while running:
                 board = Board()
                 board.SetStart()
                 board.UpdateBoardStr()
-                colorTurn = 0b1000
                 interface = Interface(board, 100)
                 running = True
                 isCheckMate = False
+                board.MakeMove(*[int(i) for i in input().split(",")])
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1 and not isCheckMate:
                 mousePos = pygame.mouse.get_pos()
-                colorTurnCopy = 0b0000
-                if (colorTurn == 0b0000):
-                    colorTurnCopy = 0b1000
-                fromSquare, toSquare, moveIsLegal = interface.RightClickAction(mousePos, colorTurn, board)
+                board.colorTurnCopy = 0b0000
+                if (board.colorTurn == 0b0000):
+                    board.colorTurnCopy = 0b1000
+                fromSquare, toSquare, moveIsLegal = interface.RightClickAction(mousePos, board.colorTurn, board)
                 if (not moveIsLegal):
                     continue
                 if (toSquare != 64):
-                    if (colorTurn == 0b0000):
-                        colorTurn = 0b1000
-                    else:
-                        colorTurn = 0b0000
                     board.MakeMove(fromSquare, toSquare)
-                    interface.DrawBoard(board.GetLegalMoves(colorTurn))
+                    print(StrMove(fromSquare)+ StrMove(toSquare))
+                    interface.DrawBoard(board.GetLegalMoves(board.colorTurn))
+                    board.MakeMove(*[int(i) for i in input().split(",")])
+                    interface.DrawBoard(board.GetLegalMoves(board.colorTurn))
                 else:
                     interface.DrawBoard(board.GetLegalMovesPiece(fromSquare, board.pcs[fromSquare]))
                     
-                if board.IsCheckmate(colorTurn):
+                if board.IsCheckmate(board.colorTurn):
                     # Display winner screen
-                    winnerColor = "White" if colorTurn == 0b0000 else "Black"
-                    interface.DisplayWinner(board, colorTurn, "Press RETURN to reset")
+                    winnerColor = "White" if board.colorTurn == 0b0000 else "Black"
+                    interface.DisplayWinner(board, board.colorTurn, "Press RETURN to reset")
                     isCheckMate = True
+
 pygame.quit()

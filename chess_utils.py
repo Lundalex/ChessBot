@@ -1,3 +1,5 @@
+from math import floor
+
 def GetPieceKey(pieceChar):
 
     pieceColor = 0b1000 if pieceChar.isupper() else 0b0000
@@ -43,7 +45,32 @@ def GetPieceChar(pieceKey):
     return pieceType.upper() if upperCase == True else pieceType
 
 def valueYInTuple(tupleSet, number):
+
     for a, b in tupleSet:
         if b == number:
             return True
     return False
+
+def StrMove(num):
+    row = num % 8
+    col = floor(num / 8)
+
+    rowChar = ""
+    if row == 0:
+        rowChar = "a"
+    elif row == 1:
+        rowChar = "b"
+    elif row == 2:
+        rowChar = "c"
+    elif row == 3:
+        rowChar = "d"
+    elif row == 4:
+        rowChar = "e"
+    elif row == 5:
+        rowChar = "f"
+    elif row == 6:
+        rowChar = "g"
+    elif row == 7:
+        rowChar = "h"
+    
+    return rowChar + str(8- col)
