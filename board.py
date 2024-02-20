@@ -1,10 +1,9 @@
 import math
 import os
-
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "hide"
 import pygame
-from testing import *
 
+from testing import *
 from chess_utils import *
 
 
@@ -680,60 +679,72 @@ class Interface:
             )
 
 
-# Board Setup
 board = Board()
-board.SetStart()
-board.UpdateBoardStr()
-
-# print(StrMove(34))
-
-# Interface setup
-interface = Interface(board, 120)
+interface = Interface(board, 100)
 running = True
 isCheckMate = False
-board.MakeMove(*[int(i) for i in read().split(",")])
-# This is very much spaghetti code, but it will have to be rewritten for implementing the bot anyways
+
+# playAgainstBot = True -> Play against the bot
+# playAgainstBot = False -> Play against another player (local)
+playAgainstBot = False
+
+# Resets board, interface and game data
+def ResetBoard():
+    global board, interface, isCheckMate
+    board = Board()
+    board.SetStart()
+    board.UpdateBoardStr()
+    interface = Interface(board, 100)
+    isCheckMate = False
+    
+    # Bot does the first move (white)
+    if playAgainstBot:
+        board.MakeMove(*[int(i) for i in read().split(",")])
+
+def MakeBotMove():
+    write(StrMove(fromSquare) + StrMove(toSquare))
+    board.MakeMove(*[int(i) for i in read().split(",")])
+    interface.DrawBoard(board.GetLegalMoves(board.colorTurn))
+    
+ResetBoard()  # Initial board setup
+
 while running:
     for event in pygame.event.get():
+        
+        # Quit the program if the pygame window is closed
         if event.type == pygame.QUIT:
             running = False
-        elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_RETURN:
-                board = Board()
-                board.SetStart()
-                board.UpdateBoardStr()
-                interface = Interface(board, 100)
-                running = True
-                isCheckMate = False
-                board.MakeMove(*[int(i) for i in read().split(",")])
-        elif event.type == pygame.MOUSEBUTTONDOWN:
-            if event.button == 1 and not isCheckMate:
-                mousePos = pygame.mouse.get_pos()
-                board.colorTurnCopy = 0b0000
-                if board.colorTurn == 0b0000:
-                    board.colorTurnCopy = 0b1000
-                fromSquare, toSquare, moveIsLegal = interface.RightClickAction(
-                    mousePos, board.colorTurn, board
-                )
-                if not moveIsLegal:
-                    continue
-                if toSquare != 64:
-                    board.MakeMove(fromSquare, toSquare)
-                    write(StrMove(fromSquare) + StrMove(toSquare))
-                    interface.DrawBoard(board.GetLegalMoves(board.colorTurn))
-                    board.MakeMove(*[int(i) for i in read().split(",")])
-                    interface.DrawBoard(board.GetLegalMoves(board.colorTurn))
-                else:
-                    interface.DrawBoard(
-                        board.GetLegalMovesPiece(fromSquare, board.pcs[fromSquare])
-                    )
+            
+        # Quit the program if the pygame window is closed
+        elif event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN:
+            ResetBoard()
+            
+        # Handle move on user mouse click action
+        elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1 and not isCheckMate:
+            
+            mousePos = pygame.mouse.get_pos()
+            board.colorTurnCopy = 0b1000 if board.colorTurn == 0b0000 else 0b0000
+            
+            # Get move data from mouse click data
+            fromSquare, toSquare, moveIsLegal = interface.RightClickAction(mousePos, board.colorTurn, board)
+            
+            # Do nothing with the board if the move isn't legal
+            if not moveIsLegal:
+                continue
+            
+            # Make the move and render new piece configuration to the screen
+            if toSquare != 64:
+                board.MakeMove(fromSquare, toSquare)
+                interface.DrawBoard(board.GetLegalMoves(board.colorTurn))
+                if playAgainstBot:
+                    MakeBotMove()
+            else:
+                interface.DrawBoard(board.GetLegalMovesPiece(fromSquare, board.pcs[fromSquare]))
 
-                if board.IsCheckmate(board.colorTurn):
-                    # Display winner screen
-                    winnerColor = "White" if board.colorTurn == 0b0000 else "Black"
-                    interface.DisplayWinner(
-                        board, board.colorTurn, "Press RETURN to reset"
-                    )
-                    isCheckMate = True
+            # Check for checkmate after each move
+            if board.IsCheckmate(board.colorTurn):
+                winnerColor = "White" if board.colorTurn == 0b0000 else "Black"  # This could be removed if not used
+                interface.DisplayWinner(board, board.colorTurn, "Press RETURN to reset")
+                isCheckMate = True
 
 pygame.quit()
