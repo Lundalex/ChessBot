@@ -688,7 +688,7 @@ board.UpdateBoardStr()
 # print(StrMove(34))
 
 # Interface setup
-interface = Interface(board, 80)
+interface = Interface(board, 120)
 running = True
 isCheckMate = False
 board.MakeMove(*[int(i) for i in read().split(",")])

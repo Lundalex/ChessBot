@@ -3,13 +3,103 @@
 #include <tuple>
 #include <thread>
 #include "ChessBoard.cpp"
+#include <iostream>
+#include <fstream>
 // #include "network_com.cpp"
-//  #include "map_save_to_file.cpp"
+// #include "map_save_to_file.cpp"
 //   #include "thc-chess-library/src/thc.h"
+#include <csignal>
 #include <cmath>
+#include <cstdlib>
 #include "small_header.h"
 
 using namespace std;
+
+void saveMapToBinaryFile(const map<string, hashmap_data> &myMap, const string &filename)
+{
+    // Open the file for writing in binary mode
+    ofstream outputFile(filename, ios::binary | ios::trunc);
+
+    if (outputFile.is_open())
+    {
+        // Iterate over the map and write each key-value pair to the file
+        for (const auto &pair : myMap)
+        {
+            // Write the key's length and the key itself
+            size_t keySize = pair.first.size();
+            outputFile.write(reinterpret_cast<const char *>(&keySize), sizeof(keySize));
+            outputFile.write(pair.first.data(), keySize);
+
+            // Write the custom struct
+            outputFile.write(reinterpret_cast<const char *>(&pair.second), sizeof(hashmap_data));
+        }
+        outputFile.close();
+        // cout << "Data saved to file successfully.\n";
+    }
+    else
+    {
+        cerr << "Error opening file: " << filename
+             << std::endl;
+
+        // Check for specific error conditions
+        if (outputFile.bad())
+        {
+            cerr << "Fatal error: badbit is set." << endl;
+        }
+
+        if (outputFile.fail())
+        {
+            // Print a more detailed error message using
+            // strerror
+            cerr << "Error details: " << strerror(errno)
+                 << endl;
+        }
+
+        // Handle the error or exit the program
+    }
+}
+
+// Function to load map data from a binary file
+map<string, hashmap_data> loadMapFromBinaryFile(const string &filename)
+{
+    map<string, hashmap_data> loadedMap;
+
+    // Open the file for reading in binary mode
+    ifstream inputFile(filename, ios::binary);
+
+    if (inputFile.is_open())
+    {
+        // Read data from the file and populate the map
+        while (inputFile.good())
+        {
+            // Read the key's length
+            size_t keySize;
+            inputFile.read(reinterpret_cast<char *>(&keySize), sizeof(keySize));
+            if (!inputFile.good())
+                break; // Break if failed to read keySize
+
+            // Read the key
+            string key;
+            key.resize(keySize);
+            inputFile.read(&key[0], keySize);
+
+            // Read the custom struct
+            hashmap_data value;
+            inputFile.read(reinterpret_cast<char *>(&value), sizeof(hashmap_data));
+
+            // Insert into the map
+            loadedMap[key] = value;
+        }
+        inputFile.close();
+        // cout << "Data loaded from file successfully.\n";
+    }
+    else
+    {
+        cerr << "Error opening file for reading.\n";
+    }
+
+    return loadedMap;
+}
 
 class abdada
 {
@@ -18,18 +108,13 @@ public:
     int depth;
     float (*heuristics)(ChessBoard); // pointer to heurisitcs function
     bool debug;                      // wheter to turn on or off debug mode , default is off
-    abdada(int n_threads, int depth, float (*heuristics)(ChessBoard), bool debug = false) : n_threads(n_threads), depth(depth), heuristics(heuristics), debug(debug){};
-
-    abdada()
-    {
-    }
+    string FileToSave;
 
 private:
     mutex lock;                                     // thread lock
     mutex print_lock;                               // thead lock for printing
     map<string, hashmap_data> hashmap;              // class hashmap
     map<string, hashmap_data> *Phashmap = &hashmap; // refrence to hashmap so threads can access it
-
     int LBOUND = -1;
     int UBOUND = 1;
     int VALID = 0;
@@ -43,6 +128,7 @@ private:
 
         if ((*Phashmap).count(position)) // the amount of values that has the key of the current position in the hashmap at the memory adress Phashmap
         {
+            // cout << (*Phashmap)[position].nproc << " " << (*Phashmap)[position].depth << " " << (*Phashmap)[position].flag << " " << (*Phashmap)[position].score << "\n";
             if (exclusive && ((*Phashmap)[position].nproc > 0) && ((*Phashmap)[position].depth == depth)) // if the node is meant to run in exclusive mode and there are others threads evaluating the node at the same depth then return ON_EVAL
             {
                 lock.unlock();                               // unlock the thread
@@ -66,9 +152,9 @@ private:
                     score = (*Phashmap)[position].score;
                     alpha = score;
                 }
-                if ((alpha < beta) && ((*Phashmap)[position].depth == depth)) // incriment the number of current threads searching the node.
-                    (*Phashmap)[position].nproc++;
             }
+            if ((alpha < beta) && ((*Phashmap)[position].depth == depth)) // incriment the number of current threads searching the node.
+                (*Phashmap)[position].nproc++;
         }
         else
         {
@@ -162,9 +248,9 @@ private:
                         // // cout << Cmove.dst << ";:;:;:\n";                                  // undo the move
                         if (std::get<1>(value)) // check id the node is under eval
                             alldone = false;
-                        else if (std::get<0>(value) > score)
+                        else if (std::get<0>(value) * 0.999 > score)
                         {
-                            score = std::get<0>(value); // save the score if it's better than a prevoius score
+                            score = std::get<0>(value) * 0.999; // save the score if it's better than a prevoius score
                             if (!(score < beta))
                             {
 
@@ -193,7 +279,8 @@ private:
         // // cout << beta << " is it good.-\n";
         // // cout << (alpha < beta) << " is it good!-\n";
         bool exclusive = false;
-        tie(score, alpha, beta, on_eval) = HashMapRetrieve(position.stringify(), alpha, beta, depth, exclusive); // basically just a stright copy from the wiki, don't ask me why or how, it is what it is
+        // tie(score, alpha, beta, on_eval) = HashMapRetrieve(position.stringify(), alpha, beta, depth, exclusive); // basically just a stright copy from the wiki, don't ask me why or how, it is what it is
+        // cout << alpha << " : " << beta << " ;\n";
         vector<chess_move> moves;
         moves = position.gen_moves();
         bool alldone = false;
@@ -278,6 +365,17 @@ public:
         delete[] some_func_return;
         return r_move; // return the best move
     };
+    abdada(int n_threads, int depth, float (*heuristics)(ChessBoard), string FileToSave, bool debug = false) : n_threads(n_threads), depth(depth), heuristics(heuristics), debug(debug), FileToSave(FileToSave)
+    {
+
+        hashmap = loadMapFromBinaryFile(FileToSave);
+    };
+    ~abdada()
+    {
+        // cout << hashmap.size() << "\n";
+        // cout << FileToSave << "\n";
+        saveMapToBinaryFile(hashmap, FileToSave);
+    }
 };
 
 int not_main()
@@ -288,7 +386,7 @@ int not_main()
     cin >> depth;
     float (*heuristics_func)(ChessBoard);
     heuristics_func = &nojus;
-    abdada the_AI(n_threads, depth, heuristics_func);
+    abdada the_AI(n_threads, depth, heuristics_func, "saveddata.dat");
     string Uin;
     while (TheBoard.outcome() == 3)
     {
@@ -304,21 +402,32 @@ int not_main()
     return 0;
 };
 
+abdada *the_AI;
+
+void exiting(int num)
+{
+    delete the_AI;
+    cout << "HEJ DÅ";
+}
+
 int main()
 {
+    signal(SIGINT, exiting);  // Interrupt (Ctrl+C)
+    signal(SIGTERM, exiting); // Termination signal
     int n_threads, depth;
     ChessBoard TheBoard;
     n_threads = 12;
+    // cin >> depth;
     depth = 6;
     float (*heuristics_func)(ChessBoard);
     heuristics_func = &nojus;
-    abdada the_AI(n_threads, depth, heuristics_func);
+    the_AI = new abdada(n_threads, depth, heuristics_func, "saveddata.dat");
     string Uin;
     chess_move the_move;
 
     while (TheBoard.outcome() == 3)
     {
-        the_move = the_AI.search(TheBoard);
+        the_move = (*the_AI).search(TheBoard);
         TheBoard.move(the_move);
         // TheBoard.display_position("an interesting position");
         cout << the_move.src << "," << the_move.dst << "\n";
@@ -326,6 +435,8 @@ int main()
         TheBoard.user_move(Uin);
         // TheBoard.display_position("an interesting position");
     }
+
+    delete the_AI;
     // cout << TheBoard.true_outcome();
     return 0;
 }

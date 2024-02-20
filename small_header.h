@@ -8,5 +8,5 @@ struct hashmap_data
     int nproc;
     int flag;
 };
-
+using namespace std;
 // using MapType = std::map<std::string, hashmap_data>;

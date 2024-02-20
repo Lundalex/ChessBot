@@ -1,76 +1,113 @@
+#include <iostream>
 #include <fstream>
+#include <map>
+#include <string>
 #include "small_header.h"
-// Define the struct
 
-// Serialization functions for hashmap_data struct
-void serialize(std::ofstream &file, const hashmap_data &data)
-{
-    file.write(reinterpret_cast<const char *>(&data), sizeof(data));
-}
+// Define your custom struct
 
-void deserialize(std::ifstream &file, hashmap_data &data)
+// Function to save map data to a binary file
+void saveMapToBinaryFile(const map<string, hashmap_data> &myMap, const string &filename)
 {
-    file.read(reinterpret_cast<char *>(&data), sizeof(data));
-}
+    // Open the file for writing in binary mode
+    ofstream outputFile(filename, ios::binary);
 
-// Function to save the map to file
-void saveMapToFile(const std::map<std::string, hashmap_data> &myMap, const std::string &filename)
-{
-    std::ofstream file(filename, std::ios::binary);
-    if (file.is_open())
+    if (outputFile.is_open())
     {
+        // Iterate over the map and write each key-value pair to the file
         for (const auto &pair : myMap)
         {
-            // Write the key size and key data
+            // Write the key's length and the key itself
             size_t keySize = pair.first.size();
-            file.write(reinterpret_cast<const char *>(&keySize), sizeof(keySize));
-            file.write(pair.first.data(), keySize);
+            outputFile.write(reinterpret_cast<const char *>(&keySize), sizeof(keySize));
+            outputFile.write(pair.first.data(), keySize);
 
-            // Serialize the value
-            serialize(file, pair.second);
+            // Write the custom struct
+            outputFile.write(reinterpret_cast<const char *>(&pair.second), sizeof(hashmap_data));
         }
-        file.close();
-        std::cout << "Map saved to file: " << filename << std::endl;
+        outputFile.close();
+        cout << "Data saved to file successfully.\n";
     }
     else
     {
-        std::cerr << "Unable to open file for writing: " << filename << std::endl;
+        cerr << "Error opening file for writing.\n";
     }
 }
 
-// Function to load the map from file
-MapType loadMapFromFile(const std::string &filename)
+// Function to load map data from a binary file
+map<string, hashmap_data> loadMapFromBinaryFile(const string &filename)
 {
-    MapType myMap;
-    std::ifstream file(filename, std::ios::binary);
-    if (file.is_open())
+    map<string, hashmap_data> loadedMap;
+
+    // Open the file for reading in binary mode
+    ifstream inputFile(filename, ios::binary);
+
+    if (inputFile.is_open())
     {
-        while (!file.eof())
+        // Read data from the file and populate the map
+        while (inputFile.good())
         {
-            // Read key size
+            // Read the key's length
             size_t keySize;
-            file.read(reinterpret_cast<char *>(&keySize), sizeof(keySize));
-            if (file.eof())
-                break;
+            inputFile.read(reinterpret_cast<char *>(&keySize), sizeof(keySize));
+            if (!inputFile.good())
+                break; // Break if failed to read keySize
 
-            // Read key
-            std::string key;
+            // Read the key
+            string key;
             key.resize(keySize);
-            file.read(&key[0], keySize);
+            inputFile.read(&key[0], keySize);
 
-            // Deserialize the value
+            // Read the custom struct
             hashmap_data value;
-            deserialize(file, value);
+            inputFile.read(reinterpret_cast<char *>(&value), sizeof(hashmap_data));
 
-            // Insert into map
-            myMap[key] = value;
+            // Insert into the map
+            loadedMap[key] = value;
         }
-        file.close();
-        std::cout << "Map loaded from file: " << filename << std::endl;
+        inputFile.close();
+        cout << "Data loaded from file successfully.\n";
     }
     else
     {
-        std::cout << "Unable to open file for reading: " << filename << std::endl;
+        cerr << "Error opening file for reading.\n";
     }
-    return myMap;
+
+    return loadedMap;
+}
+
+int main()
+{
+    // Your map
+    map<string, hashmap_data> myMap;
+    // Populate your map
+
+    // Save the map data to a binary file
+    saveMapToBinaryFile(myMap, "data.bin");
+
+    // Load the map data from the binary file
+    map<string, hashmap_data> loadedMap = loadMapFromBinaryFile("data.bin");
+
+    // Now you can use loadedMap as needed
+
+    return 0;
+}
+
+class some_test_class
+{
+private:
+    map<string, hashmap_data> loadedMap = loadMapFromBinaryFile("data.bin");
+
+public:
+    map<string, hashmap_data> loadedMap = loadMapFromBinaryFile("data.bin");
+    some_test_class(/* args */);
+    ~some_test_class();
+};
+
+some_test_class::some_test_class(/* args */)
+{
+}
+
+some_test_class::~some_test_class()
+{
 }
