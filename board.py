@@ -686,7 +686,7 @@ isCheckMate = False
 
 # playAgainstBot = True -> Play against the bot
 # playAgainstBot = False -> Play against another player (local)
-playAgainstBot = False
+playAgainstBot = True
 
 # Resets board, interface and game data
 def ResetBoard():
@@ -746,5 +746,5 @@ while running:
                 winnerColor = "White" if board.colorTurn == 0b0000 else "Black"  # This could be removed if not used
                 interface.DisplayWinner(board, board.colorTurn, "Press RETURN to reset")
                 isCheckMate = True
-
+kill()
 pygame.quit()

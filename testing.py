@@ -12,3 +12,6 @@ def write(move: str) -> None:
 
 def read() -> str:
     return str(p.stdout.readline().strip())[2:-1]
+
+def kill() -> None:
+    p.terminate()
